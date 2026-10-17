@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' https://cdn.jsdelivr.net; font-src https://cdn.jsdelivr.net; img-src 'self' data:">
+<title>현황판</title>
+<!-- 프리텐다드 1.3.9 (버전 고정, 화면에 쓰인 글자 묶음만 내려받는 웹폰트) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="widget.css">
+</head>
+<body>
+<svg class="defs" width="0" height="0" aria-hidden="true">
+  <filter id="warp" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="0.011 0.016" numOctaves="2" seed="3" result="noise"/>
+    <feGaussianBlur in="noise" stdDeviation="1.5" result="soft"/>
+    <feDisplacementMap in="SourceGraphic" in2="soft" scale="34" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+
+<div id="pill" class="host pill">
+  <div class="wp" aria-hidden="true"></div>
+  <div class="g-rim" aria-hidden="true"></div>
+  <div class="g-glass" aria-hidden="true"></div>
+  <div class="g-shine" aria-hidden="true"></div>
+  <button id="pillBtn" class="pillBtn txt" type="button" aria-label="현황판 펼치기">
+    <span class="breath" aria-hidden="true"></span>
+    <span id="pillDday" class="pd"></span>
+    <span id="pillTitle" class="pt">불러오는 중</span>
+    <span class="sep" aria-hidden="true"></span>
+    <span id="pillCount" class="pc"></span>
+  </button>
+  <div class="g-edge" aria-hidden="true"></div>
+</div>
+
+<section id="panel" class="host panel" aria-label="작업 현황판">
+  <div class="wp" aria-hidden="true"></div>
+  <div class="g-rim" aria-hidden="true"></div>
+  <div class="g-glass" aria-hidden="true"></div>
+  <div class="g-shine" aria-hidden="true"></div>
+  <div class="content txt">
+    <header class="head">
+      <div class="ttl">
+        <div class="ttlRow">
+          <h1 title="잡고 끌면 위젯을 옮겨요">현황판</h1>
+          <button id="info" class="ib sm" type="button" aria-label="사용법" aria-expanded="false" title="사용법"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5"/><path d="M12 7.8v0.4"/></svg></button>
+        </div>
+        <p id="counts">불러오는 중</p>
+      </div>
+      <span id="dday" class="dday" hidden></span>
+      <button id="clean" class="ib pop" type="button" aria-label="줄 그은 것 완료함으로 정리" title="줄 그은 것 완료함으로" hidden><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 4l-8.5 8.5"/><path d="M11.5 12.5c-2.6-1.1-5.6.4-6.6 3.4L4 20l4-1c3-1 4.6-3.9 3.5-6.5z"/><path d="M7 16.5l1.5 1.5"/></svg><span id="cleanBadge" class="badge"></span></button>
+      <button id="add" class="ib" type="button" aria-label="할 일 추가" aria-expanded="false" title="할 일 추가"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
+      <button id="undo" class="ib is-off" type="button" aria-label="되돌리기" title="되돌리기"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6.5L4.5 11 9 15.5"/><path d="M5 11h9.5a5 5 0 0 1 0 10H12"/></svg></button>
+      <button id="pinBtn" class="ib" type="button" aria-label="펼친 채로 고정" title="펼친 채로 고정"><svg class="i-pin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6l-1 5 3 3H7l3-3z"/><path d="M12 15v5"/></svg><svg class="i-up" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 14l5-5 5 5"/></svg></button>
+    </header>
+
+    <div id="infoPop" class="note pop" role="note" hidden>
+      <span>위 3개가 지금 할 것, 아래는 순위대로</span>
+      <span>줄을 끌어서 순서 바꾸기 · 보류나 완료 칸에 놓으면 그쪽으로</span>
+      <span>네모 칸 — 줄 긋기 · 빗자루 — 줄 그은 것 모두 완료함으로</span>
+      <span>⋯ 또는 오른쪽 클릭 — 지금 할 것으로 · 보류 · 완료</span>
+      <span>완료함에서 — 되살리기 · 영구 삭제</span>
+      <span>알약에 커서를 올리면 잠깐 보기 · 치우면 다시 접혀요</span>
+      <span>알약을 누르면 고정(다른 창 위에도) · ˄ 누르면 다시 자동</span>
+      <span>"현황판" 글자를 잡고 끌면 위젯을 옮겨요</span>
+      <span>맨 아래 파일 이름 — STATUS.md 열기</span>
+    </div>
+
+    <div id="addBox" class="addBox pop" hidden>
+      <div class="addRow">
+        <input id="addInput" class="addInput" type="text" aria-label="새 할 일" placeholder="할 일 입력 후 Enter" autocomplete="off" spellcheck="false">
+        <button id="addGo" class="ib" type="button" aria-label="추가" title="추가"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 5v7a3 3 0 0 1-3 3H6"/><path d="M9.5 11.5L6 15l3.5 3.5"/></svg></button>
+      </div>
+      <div id="tags" class="tags" role="radiogroup" aria-label="종류"></div>
+    </div>
+
+    <div class="focusWrap">
+      <h2 class="lbl">지금 할 것</h2>
+      <div id="focus" class="list focus"></div>
+      <h2 class="lbl next">다음</h2>
+    </div>
+
+    <div id="scroll" class="scroll">
+      <div id="rest" class="list"></div>
+      <div class="folds">
+        <button id="holdFold" class="fold" type="button" data-zone="hold" aria-expanded="false" aria-controls="held">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6v12"/><path d="M15 6v12"/></svg>
+          <span id="holdCount" class="grow">보류 0</span>
+          <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10l4 4 4-4"/></svg>
+        </button>
+        <div id="held" class="list pop" hidden></div>
+        <button id="doneFold" class="fold" type="button" data-zone="done" aria-expanded="false" aria-controls="doneList">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8 12.2l2.8 2.8 5.4-5.5"/></svg>
+          <span id="doneCount" class="grow">완료 0</span>
+          <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10l4 4 4-4"/></svg>
+        </button>
+        <div id="doneList" class="list pop" hidden></div>
+      </div>
+    </div>
+
+    <footer class="foot">
+      <button id="file" class="fileBtn" type="button" title="STATUS.md 열기"><span class="dot" aria-hidden="true"></span><span id="footText">STATUS.md</span></button>
+    </footer>
+  </div>
+  <div class="g-edge" aria-hidden="true"></div>
+  <div id="toast" class="toast" role="status" hidden></div>
+</section>
+<script src="widget.js"></script>
+</body>
+</html>
