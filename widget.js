@@ -230,6 +230,7 @@
 
   document.addEventListener('mousemove', e => {
     if (resizing || moving) return; // 끄는 동안은 커서가 판 밖으로 나가도 클릭 통과로 바꾸지 않는다
+    if (ignoreRealPointer && e.isTrusted) return; // 시험 중: 책상 위 진짜 마우스가 끼어들지 않게
     const host = e.target.closest ? e.target.closest('.host') : null;
     const active = open ? $('panel') : $('pill');
     const inside = host === active;
@@ -245,7 +246,8 @@
       if (onPin) {
         clearTimeout(openTimer);
         openTimer = null;
-      } else if (!open && !openTimer && !suppressHover) {
+      } else if (!open && !openTimer && !suppressHover && !press && !(e.buttons & 1)) {
+        // 누르고 있는 동안(끌기 직전 멈칫할 때 포함)에는 판을 펼치지 않는다
         openTimer = setTimeout(() => {
           openTimer = null;
           peekAt = Date.now();
@@ -291,6 +293,7 @@
   // 알약에 커서를 올려 판이 펼쳐진 직후 알약 자리를 끌면, 판을 접고 알약만 따라오게 한다.
   const NOT_DRAG = 'button, input, textarea, select, a, [role="button"], [role="tab"], .it, .pj, .step, .addBox, .tonePop, .note, .cal, .tabs, .prog, .fold, .sizeGrip, .notice, .toast, .pjHidden';
   let press = null;
+  let ignoreRealPointer = false; // 시험 스크립트만 켠다 (window.__widget.ignoreRealPointer)
   let blockClickUntil = 0;
   let moveFrame = 0;
   document.addEventListener('pointerdown', e => {
@@ -301,7 +304,9 @@
       fromPill = true;
       clearTimeout(openTimer);
       openTimer = null;
-    } else if (open && !pinned && Date.now() - peekAt < 900 && inPill(e.clientX, e.clientY)) {
+    } else if (open && !pinned && inPill(e.clientX, e.clientY) && !t.closest('.sizeGrip, .tonePop, input')) {
+      // 커서를 올려 판이 잠깐 펼쳐진 동안, 알약이 있던 자리에서 시작한 끌기는 언제든 알약 옮기기다.
+      // (그 자리에 깔린 할 일 줄·바닥 버튼이 대신 끌리거나 눌리지 않게. 끌지 않고 누르기만 하면 원래대로)
       fromPill = true;
     } else if (!open || !t.closest('#panel') || t.closest(NOT_DRAG)) {
       return;
@@ -310,6 +315,12 @@
   }, true);
   document.addEventListener('pointermove', e => {
     if (!press) return;
+    if (ignoreRealPointer && e.isTrusted) return; // 시험 중: 책상 위 진짜 마우스가 끼어들지 않게
+    if (!(e.buttons & 1)) {
+      // 창 밖에서 버튼을 놓아 pointerup을 못 받은 경우: 누른 채가 아니면 끌기를 끝낸다 (위젯이 커서를 따라다니지 않게)
+      endPress();
+      return;
+    }
     if (!press.started) {
       if (Math.abs(e.screenX - press.x) + Math.abs(e.screenY - press.y) < 5) return;
       press.started = true;
@@ -339,7 +350,10 @@
     blockClickUntil = Date.now() + 400; // 끌고 놓은 뒤 따라오는 클릭은 무시 (알약 고정 등이 눌리지 않게)
     if (p.fromPill) suppressHover = true;
     if (p.last) api.dragMove(p.last); // 마지막 자리까지 옮긴 뒤 붙을 쪽을 정한다
-    const r = await api.dragEnd();
+    let r = null;
+    try {
+      r = await api.dragEnd();
+    } catch (err) {}
     moving = false;
     body.classList.remove('is-moving');
     if (r) applyAnchor(r);
@@ -399,6 +413,10 @@
       toggleMenu(el, true);
     });
     el.addEventListener('dragstart', e => {
+      if (press && press.fromPill) {
+        e.preventDefault(); // 알약 자리에서 시작한 끌기는 줄 순서 바꾸기가 아니라 위젯 옮기기
+        return;
+      }
       dragKey = el.dataset.key;
       closeMenu();
       try {
@@ -1521,6 +1539,7 @@
     open: () => setOpen(true),
     close: () => setOpen(false),
     tab: t => setTab(t, false),
+    ignoreRealPointer: on => { ignoreRealPointer = !!on; },
     state: () => ({ open, pinned, onTop, stay, ignoring, menuKey, suppressHover, tab, anchor: anchorKey, panelH, moving, notice: noticeNow ? noticeNow.id : '' })
   };
   load();

@@ -31,6 +31,8 @@ function ensureFile(file) {
 
 // 작은 위젯이라 그래픽 가속 없이 그려도 충분하다 (GPU 프로세스 메모리 절약)
 app.disableHardwareAcceleration();
+// 시험용: 화면 배율이 큰 컴퓨터(125%·150%)처럼 띄워 본다
+if (TEST && process.env.STATUS_WIDGET_SCALE) app.commandLine.appendSwitch('force-device-scale-factor', String(process.env.STATUS_WIDGET_SCALE));
 // in-process-gpu(메모리 −24MB 더 절약)는 투명 부분이 하얗게 변하는 문제가 의심돼서 쓰지 않는다
 
 // 창·전원·화면 이벤트 기록 (흰 화면 같은 일이 다시 생기면 언제·무엇 뒤였는지 보려고)
@@ -238,11 +240,13 @@ ipcMain.handle('claude:open', async (_e, prompt) => {
 ipcMain.handle('win:state', () => ({ pinned, stay, panelH, anchor, test: TEST, startOpen: !!process.env.STATUS_WIDGET_OPEN }));
 // 판 가장자리를 끌어 높이 조절: 끄는 동안은 창을 화면 끝까지 늘려 두고(아래로 펼치면 아래 끝, 위로 펼치면 위 끝),
 // 놓으면 판 높이에 맞춰 줄인다. 알약이 있는 쪽은 그 자리에 그대로 있다
+let resizeBottom = null; // 위로 펼친 판을 늘리는 동안 알약이 있는 아래쪽 끝 (배율 반올림으로 밀리지 않게 기억)
 ipcMain.handle('win:resize-begin', () => {
   if (!win || win.isDestroyed()) return null;
   const b = win.getBounds();
   const wa = screen.getDisplayMatching(b).workArea;
   let nb;
+  resizeBottom = b.y + b.height;
   if (anchor.v === 'up') {
     const bottom = b.y + b.height;
     const top = Math.min(b.y, wa.y);
@@ -258,8 +262,9 @@ ipcMain.handle('win:resize-end', (_e, h) => {
   if (!win || win.isDestroyed()) return panelH;
   panelH = clampPanel(h);
   const b = win.getBounds();
-  if (anchor.v === 'up') win.setBounds({ x: b.x, y: b.y + b.height - winH(), width: WIN_W, height: winH() });
+  if (anchor.v === 'up') win.setBounds({ x: b.x, y: (resizeBottom === null ? b.y + b.height : resizeBottom) - winH(), width: WIN_W, height: winH() });
   else win.setBounds({ x: b.x, y: b.y, width: WIN_W, height: winH() });
+  resizeBottom = null;
   sendBounds();
   saveWinState();
   logEvent('panel height ' + panelH);
@@ -293,6 +298,9 @@ function settleAnchor() {
   const b = win.getBounds();
   const p = pillRect(b, anchor);
   const wa = screen.getDisplayMatching(p).workArea;
+  // 알약을 화면 가장자리 밖으로 걸쳐 놓았으면 화면 안으로 당겨 넣는다
+  p.x = Math.min(Math.max(p.x, wa.x + 4), wa.x + wa.width - p.width - 4);
+  p.y = Math.min(Math.max(p.y, wa.y + 4), wa.y + wa.height - p.height - 4);
   const cx = p.x + p.width / 2;
   const cy = p.y + p.height / 2;
   const h = cx < wa.x + wa.width / 2 ? 'left' : 'right';
