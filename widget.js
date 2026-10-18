@@ -26,6 +26,13 @@
   let pinned = false; // 이번에만 고정 (알약 클릭). 영구 고정(stay)은 트레이 메뉴
   let suppressHover = false; // ˄로 접은 직후 알약 위에 커서가 있어도 바로 다시 펼치지 않게
   let peekAt = 0;
+  let tab = 'todo'; // 할 일 | 프로젝트
+  const projOpen = new Map(); // 프로젝트 이름 → 펼쳤는지
+  const projDoneOpen = new Map(); // 프로젝트 이름 → 끝난 단계 보이는지
+  let addDate = null; // 추가할 때 고른 날짜 (Date)
+  let addKind = 'ask'; // ask = Claude가 물어보기, notify = 알림만
+  let calView = null; // 달력에 보이는 달 (그달 1일)
+  let shownNotice = ''; // 지금 떠 있는 알림 (새로 뜰 때만 움직임을 준다)
 
   const svg = (inner, size, stroke) =>
     '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + stroke +
@@ -69,14 +76,29 @@
 
   const wait = ms => new Promise(r => setTimeout(r, ms));
 
+  function todayDate() {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+
   function ddayOf(v) {
     if (!v.due) return null;
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const today = todayDate();
     let at = new Date(today.getFullYear(), v.due.m - 1, v.due.d);
     if (at - today < -60 * DAY) at = new Date(today.getFullYear() + 1, v.due.m - 1, v.due.d);
     const n = Math.round((at - today) / DAY);
-    return { n, text: n > 0 ? 'D-' + n : n === 0 ? 'D-day' : 'D+' + -n };
+    return { n, at, text: n > 0 ? 'D-' + n : n === 0 ? 'D-day' : 'D+' + -n };
+  }
+
+  const WEEK = '일월화수목금토';
+  const md = d => (d.getMonth() + 1) + '/' + d.getDate();
+  const dayLabel = d => md(d) + ' ' + WEEK.charAt(d.getDay());
+  const dayKey = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  // 받침이 있으면 "이", 없으면 "가" (한글이 아니면 "이(가)")
+  function josa(word) {
+    const c = String(word).trim().slice(-1).charCodeAt(0);
+    if (c >= 0xac00 && c <= 0xd7a3) return (c - 0xac00) % 28 ? '이' : '가';
+    return '이(가)';
   }
 
   function hhmm(ms) {
@@ -96,7 +118,7 @@
   function placeWall() {
     if (!wallInfo || !wallInfo.layer || !winBounds) return;
     const layer = wallInfo.layer;
-    for (const host of [$('pill'), $('panel')]) {
+    for (const host of document.querySelectorAll('.host')) {
       const wp = host.querySelector('.wp');
       wp.style.left = (layer.x - winBounds.x - host.offsetLeft) + 'px';
       wp.style.top = (layer.y - winBounds.y - host.offsetTop) + 'px';
@@ -166,8 +188,10 @@
     const host = e.target.closest ? e.target.closest('.host') : null;
     const active = open ? $('panel') : $('pill');
     const inside = host === active;
+    // 접혀 있을 때 알약 밑 알림 위에서는 클릭을 받되 판은 펼치지 않는다
+    const onNotice = !open && !!host && host.classList.contains('notice') && !host.hidden;
     hovering = inside;
-    setIgnore(!inside);
+    setIgnore(!inside && !onNotice);
     if (!inside && !open) suppressHover = false;
     if (inside) {
       clearTimeout(closeTimer);
@@ -242,9 +266,12 @@
     return el;
   }
 
+  const PEN = '<path d="M4 20l4.2-1 10.3-10.3a2.1 2.1 0 0 0-3-3L5.2 16 4 20z"/><path d="M13.5 7.5l3 3"/>';
+
   function fill(el, v, mode) {
     el.dataset.key = v.key;
     const cls = ['it', mode === 'focus' ? 'card' : 'row', 'cat-' + v.cat];
+    if (v.user) cls.push('is-user');
     if (v.done) cls.push('is-done');
     if (mode === 'held') cls.push('is-held');
     if (mode === 'done') cls.push('is-donearea');
@@ -257,20 +284,25 @@
     el.querySelector('.cb').setAttribute('aria-pressed', v.done ? 'true' : 'false');
     el.querySelector('.t').textContent = v.title;
     let sub = v.sub || v.ref || '';
+    const dd0 = v.user ? ddayOf(v) : null;
+    // 직접 넣은 줄: "직접 추가 · 10/31 토" (적어 둔 설명이 있으면 그것 · 날짜)
+    if (v.user) sub = (v.note || '직접 추가') + (dd0 ? ' · ' + dayLabel(dd0.at) : '');
     if (mode === 'done') sub = (v.doneAt ? v.doneAt + ' 완료' : '완료') + (v.sub ? ' · ' + v.sub : '');
     el.querySelector('.st').textContent = sub;
     el.querySelector('.body').title = v.title + (v.sub ? ' — ' + v.sub : '') + (v.ref ? '\n← ' + v.ref : '');
     const ic = el.querySelector('.ic');
-    if (ic.dataset.cat !== v.cat) {
-      ic.dataset.cat = v.cat;
-      ic.innerHTML = svg(CAT_ICON[v.cat] || CAT_ICON.etc, 13, 2);
+    const icKey = v.user && mode !== 'done' ? 'user' : v.cat;
+    if (ic.dataset.cat !== icKey) {
+      ic.dataset.cat = icKey;
+      ic.innerHTML = svg(icKey === 'user' ? PEN : CAT_ICON[v.cat] || CAT_ICON.etc, icKey === 'user' ? 11 : 13, icKey === 'user' ? 2.2 : 2);
     }
     const chip = el.querySelector('.chip');
-    const dd = mode === 'focus' ? ddayOf(v) : null;
-    chip.hidden = !dd;
+    const dd = mode === 'focus' || (v.user && mode === 'row') ? ddayOf(v) : null;
+    chip.hidden = !dd || v.done;
     if (dd) {
-      chip.textContent = dd.text;
+      chip.textContent = v.user && dd.n === 0 ? '오늘' : dd.text;
       chip.classList.toggle('is-late', dd.n < 0);
+      chip.classList.toggle('is-soft', !!v.user);
     }
     const isMenu = menuKey === v.key;
     el.querySelector('.bar').hidden = !isMenu;
@@ -306,6 +338,11 @@
       $('pillCount').textContent = '!';
       emptyEl.textContent = (s && s.error) || 'STATUS.md를 읽지 못했어요';
       $('focus').appendChild(emptyEl);
+      $('prog').hidden = true;
+      $('tabs').hidden = true;
+      $('pillProg').hidden = true;
+      $('pill').classList.remove('has-prog');
+      showNotice(null);
       return;
     }
     $('counts').textContent = '할 일 ' + s.todo.length + ' · 보류 ' + s.hold.length + ' · 완료 ' + s.done.length;
@@ -354,6 +391,9 @@
       $('focus').appendChild(emptyEl);
     }
 
+    renderProjects(s);
+    renderNotices(s);
+
     $('footText').textContent = (s.name || 'STATUS.md') + ' · ' + (note || '저장 ' + hhmm(s.mtime));
 
     if (flashKey) {
@@ -366,6 +406,218 @@
         setTimeout(() => el.classList.remove('is-flash'), 750);
       }
     }
+  }
+
+  // ── 프로젝트: 맨 위 진행 줄 · 탭 · 카드 ──
+  function stepInfo(v) {
+    const steps = v.steps || [];
+    const done = steps.filter(x => x.state === 'done').length;
+    const nowIdx = steps.findIndex(x => x.state === 'now');
+    let nextIdx = -1;
+    for (let k = nowIdx >= 0 ? nowIdx + 1 : 0; k < steps.length; k++) {
+      if (steps[k].state === 'todo') { nextIdx = k; break; }
+    }
+    const pct = steps.length ? Math.round(done / steps.length * 100) : 0;
+    return { steps, done, total: steps.length, nowIdx, nextIdx, pct };
+  }
+
+  function setTab(t, save) {
+    tab = t === 'proj' ? 'proj' : 'todo';
+    const proj = tab === 'proj';
+    body.classList.toggle('tab-proj', proj);
+    $('tabTodo').classList.toggle('is-on', !proj);
+    $('tabProj').classList.toggle('is-on', proj);
+    $('tabTodo').setAttribute('aria-selected', proj ? 'false' : 'true');
+    $('tabProj').setAttribute('aria-selected', proj ? 'true' : 'false');
+    $('todoPane').hidden = proj;
+    $('projPane').hidden = !proj;
+    if (proj) closeMenu();
+    if (save) store.set('tab', tab);
+  }
+
+  const LIFT = '<path d="M6 4.5h12"/><path d="M12 20V9"/><path d="M7.5 13.5L12 9l4.5 4.5"/>';
+  const CHEV = '<path d="M8 10l4 4 4-4"/>';
+  const CHECK = '<path d="M5 12.5l4.5 4.5L19 7.5"/>';
+  const PJ_TEMPLATE =
+    '<div class="pjHead" role="button" tabindex="0" aria-expanded="false">' +
+    '<div class="pjRow"><span class="pjT"></span><span class="chip" hidden></span>' +
+    '<button class="ib sm pjLift" type="button" aria-label="맨 위로" title="맨 위로 — 알약과 맨 위 줄에 띄우기">' + svg(LIFT, 15, 2) + '</button>' +
+    '<span class="pjPct"></span><span class="chev">' + svg(CHEV, 16, 2) + '</span></div>' +
+    '<div class="pjSub pjDesc"><span class="tx"></span></div>' +
+    '<span class="track"><span class="fill"></span></span>' +
+    '<div class="pjSub pjNow"><span class="dot2" aria-hidden="true"></span><span class="key"></span><span class="tx"></span></div>' +
+    '</div>' +
+    '<div class="pjSteps" hidden>' +
+    '<button class="dfold" type="button" aria-expanded="false">' + svg(CHECK, 14, 2.2) + '<span class="grow"></span><span class="chev">' + svg(CHEV, 15, 2) + '</span></button>' +
+    '<div class="stepList"></div>' +
+    '</div>';
+  const pjNodes = new Map();
+
+  function makeProj() {
+    const el = document.createElement('div');
+    el.className = 'pj';
+    el.innerHTML = PJ_TEMPLATE;
+    const head = el.querySelector('.pjHead');
+    const toggle = () => {
+      const name = el.dataset.name;
+      projOpen.set(name, !el.classList.contains('is-open'));
+      if (current) render(current);
+    };
+    head.addEventListener('click', e => {
+      if (e.target.closest('.pjLift')) return;
+      toggle();
+    });
+    head.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggle();
+      }
+    });
+    el.querySelector('.pjLift').addEventListener('click', async e => {
+      e.stopPropagation();
+      if (busy) return;
+      busy = true;
+      try {
+        await apply({ type: 'top', key: el.dataset.key });
+        const fresh = pjNodes.get(current && current.proj && current.proj[0] ? current.proj[0].key : '');
+        if (fresh) {
+          fresh.classList.remove('is-flash');
+          void fresh.offsetWidth;
+          fresh.classList.add('is-flash');
+          setTimeout(() => fresh.classList.remove('is-flash'), 750);
+        }
+      } finally {
+        busy = false;
+      }
+    });
+    el.querySelector('.dfold').addEventListener('click', () => {
+      const name = el.dataset.name;
+      projDoneOpen.set(name, !projDoneOpen.get(name));
+      if (current) render(current);
+    });
+    el.querySelector('.stepList').addEventListener('click', async e => {
+      const cb = e.target.closest('.cb');
+      if (!cb || busy) return;
+      const row = cb.closest('.step');
+      busy = true;
+      try {
+        row.classList.toggle('is-done');
+        await apply({ type: 'step', key: el.dataset.key, idx: Number(row.dataset.idx) });
+      } catch (err) {
+        toast('저장하지 못했어요: ' + (err && err.message ? err.message : err));
+      } finally {
+        busy = false;
+      }
+    });
+    return el;
+  }
+
+  function fillProj(el, v, i) {
+    const inf = stepInfo(v);
+    if (!projOpen.has(v.title)) projOpen.set(v.title, i === 0);
+    const isOpen = projOpen.get(v.title);
+    const doneOpen = !!projDoneOpen.get(v.title);
+    el.dataset.key = v.key;
+    el.dataset.name = v.title;
+    el.classList.toggle('is-open', isOpen);
+    el.querySelector('.pjHead').setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    el.querySelector('.pjT').textContent = v.title;
+    el.querySelector('.pjHead').title = v.title + (v.sub ? ' — ' + v.sub : '');
+    const chip = el.querySelector('.chip');
+    const dd = ddayOf(v);
+    chip.hidden = !dd;
+    if (dd) {
+      chip.textContent = dd.text;
+      chip.classList.toggle('is-late', dd.n < 0);
+    }
+    el.querySelector('.pjLift').hidden = i === 0;
+    el.querySelector('.pjPct').textContent = inf.pct + '%';
+    el.querySelector('.fill').style.width = inf.pct + '%';
+    const desc = el.querySelector('.pjDesc');
+    desc.hidden = !isOpen || !v.sub;
+    desc.querySelector('.tx').textContent = v.sub || '';
+    // 접혀 있으면 "지금 · 하는 단계" (없으면 다음 단계) 한 줄
+    const now = el.querySelector('.pjNow');
+    const pick = inf.nowIdx >= 0 ? inf.nowIdx : inf.nextIdx;
+    now.hidden = isOpen || (pick < 0 && !(inf.total && inf.done === inf.total));
+    now.querySelector('.dot2').className = 'dot2 ' + (inf.nowIdx >= 0 ? 'nowdot' : 'nextdot');
+    now.querySelector('.key').textContent = inf.nowIdx >= 0 ? '지금' : pick >= 0 ? '다음' : '';
+    now.querySelector('.tx').textContent = pick >= 0 ? inf.steps[pick].text : '다 끝났어요';
+    // 펼치면 단계 목록: 끝난 것은 접어 두고 "끝난 N"으로
+    const stepsBox = el.querySelector('.pjSteps');
+    stepsBox.hidden = !isOpen;
+    const dfold = el.querySelector('.dfold');
+    dfold.hidden = !inf.done;
+    dfold.setAttribute('aria-expanded', doneOpen ? 'true' : 'false');
+    dfold.querySelector('.grow').textContent = '끝난 ' + inf.done;
+    const list = el.querySelector('.stepList');
+    while (list.children.length > inf.total) list.lastChild.remove();
+    while (list.children.length < inf.total) {
+      const row = document.createElement('div');
+      row.className = 'step';
+      row.innerHTML = '<button class="cb" type="button" aria-label="끝났으면 체크" aria-pressed="false">' + svg(CHECK, 12, 3.2) + '</button>' +
+        '<span class="stT"><span class="t"></span></span><span class="stTag" hidden></span>';
+      list.appendChild(row);
+    }
+    inf.steps.forEach((s, k) => {
+      const row = list.children[k];
+      row.dataset.idx = String(k);
+      const name = 'step' + (s.state === 'done' ? ' is-done' : '') + (s.state === 'now' ? ' is-now' : '');
+      if (row.className !== name) row.className = name;
+      row.hidden = s.state === 'done' && !doneOpen;
+      row.querySelector('.cb').setAttribute('aria-pressed', s.state === 'done' ? 'true' : 'false');
+      row.querySelector('.t').textContent = s.text;
+      const tag = row.querySelector('.stTag');
+      const isNext = k === inf.nextIdx;
+      tag.hidden = !(s.state === 'now' || isNext);
+      tag.className = 'stTag ' + (s.state === 'now' ? 'is-now' : 'is-next');
+      tag.textContent = s.state === 'now' ? '지금' : '다음';
+    });
+  }
+
+  function renderProjects(s) {
+    const projs = s.proj || [];
+    const has = projs.length > 0;
+    $('tabs').hidden = !has;
+    if (!has && tab === 'proj') setTab('todo');
+    $('tabTodoCount').textContent = String(s.todo.filter(v => !v.done).length);
+    $('tabProjCount').textContent = String(projs.length);
+    const live = new Set();
+    const box = $('projPane');
+    projs.forEach((v, i) => {
+      live.add(v.key);
+      let el = pjNodes.get(v.key);
+      if (!el) {
+        el = makeProj();
+        pjNodes.set(v.key, el);
+      }
+      fillProj(el, v, i);
+      const at = box.children[i];
+      if (at !== el) box.insertBefore(el, at || null);
+    });
+    for (const [k, el] of pjNodes) {
+      if (!live.has(k)) {
+        el.remove();
+        pjNodes.delete(k);
+      }
+    }
+    // 맨 위 줄과 알약: 끝나지 않은 맨 위 프로젝트
+    const top = projs.find(v => !v.done && (v.steps || []).length);
+    $('prog').hidden = !top;
+    $('pillProg').hidden = !top;
+    $('pill').classList.toggle('has-prog', !!top);
+    if (!top) return;
+    const inf = stepInfo(top);
+    $('progName').textContent = top.title;
+    $('progNow').textContent = inf.nowIdx >= 0 ? '· ' + inf.steps[inf.nowIdx].text : inf.nextIdx >= 0 ? '· 다음 ' + inf.steps[inf.nextIdx].text : '· 다 끝났어요';
+    $('progPct').textContent = inf.pct + '%';
+    $('progFill').style.width = inf.pct + '%';
+    $('prog').dataset.name = top.title;
+    $('pillFill').style.width = inf.pct + '%';
+    $('pillPct').textContent = inf.pct + '%';
+    $('pillProg').title = top.title + ' ' + inf.pct + '%';
+    const label = $('pillBtn').getAttribute('aria-label') || '';
+    if (!/ 진행 /.test(label)) $('pillBtn').setAttribute('aria-label', label + ', ' + top.title + ' 진행 ' + inf.pct + '%');
   }
 
   async function apply(op, flash) {
@@ -639,8 +891,12 @@
     $('add').classList.toggle('is-on', on);
     $('add').setAttribute('aria-expanded', on ? 'true' : 'false');
     if (on) {
+      if (tab !== 'todo') setTab('todo', true); // 추가한 줄은 할 일 탭에 들어간다
       renderTags();
       $('addInput').value = '';
+      addKind = 'ask';
+      setCal(false);
+      setAddDate(null);
       setTimeout(() => $('addInput').focus(), 30);
     }
   }
@@ -650,7 +906,7 @@
     if (!text || busy) return;
     busy = true;
     try {
-      const s = await apply({ type: 'add', text, cat: addCat });
+      const s = await apply({ type: 'add', text, cat: addCat, due: addDate ? md(addDate) : '', kind: addKind });
       if (s.ok && s.todo[3]) {
         flashKey = s.todo[3].key;
         render(s);
@@ -675,6 +931,258 @@
       setAdding(false);
     }
   });
+
+  // ── 탭 · 맨 위 진행 줄 ──
+  $('tabTodo').addEventListener('click', () => setTab('todo', true));
+  $('tabProj').addEventListener('click', () => setTab('proj', true));
+  $('prog').addEventListener('click', () => {
+    const name = $('prog').dataset.name;
+    if (name) projOpen.set(name, true);
+    setTab('proj', true);
+    if (current) render(current);
+  });
+  setTab(store.get('tab') === 'proj' ? 'proj' : 'todo', false);
+
+  // ── 날짜 알림 (접힌 알약 밑) ──
+  // 직접 넣은 줄 중 "물어보기": 사흘 전부터 말풍선. "알림만"과 [마감] 줄: 하루 전·당일에 네모 칸
+  function loadJson(k) {
+    try { return JSON.parse(store.get(k) || '{}') || {}; } catch (e) { return {}; }
+  }
+  function saveJson(k, obj) {
+    const keys = Object.keys(obj);
+    if (keys.length > 300) for (const old of keys.slice(0, keys.length - 300)) delete obj[old];
+    store.set(k, JSON.stringify(obj));
+  }
+  let seenNotes = loadJson('seen'); // 확인·닫은 일정 알림
+  let snoozed = loadJson('snooze'); // "내일"을 누른 질문 → 다시 보일 날
+
+  function noticeQueue(s) {
+    const out = [];
+    const tk = dayKey(todayDate());
+    for (const v of s.todo) {
+      if (v.done) continue;
+      const dd = ddayOf(v);
+      if (!dd) continue;
+      if (v.user && v.kind === 'ask') {
+        if (v.asked || dd.n > 3) continue;
+        if (snoozed[v.title] && snoozed[v.title] > tk) continue;
+        out.push({ type: 'ask', v, dd, id: 'ask|' + v.title });
+      } else if (dd.n === 0 || dd.n === 1) {
+        const id = 'sched|' + v.title + '|' + dayKey(dd.at) + '|' + dd.n;
+        if (seenNotes[id]) continue;
+        out.push({ type: 'sched', v, dd, id });
+      }
+    }
+    out.sort((a, b) => a.dd.n - b.dd.n || (a.type === 'ask' ? -1 : 1));
+    return out;
+  }
+
+  let noticeNow = null;
+  function renderNotices(s) {
+    showNotice(noticeQueue(s)[0] || null);
+  }
+
+  // 말풍선 모양: 몸통 280 × h, 오른쪽 위 꼬리가 화면 바깥쪽(오른쪽)을 향한다
+  function bubblePath(w, t, h) {
+    const r = 18;
+    return 'M' + r + ' 0 H' + (w + t - 2) + ' Q' + (w + t + 1) + ' 0 ' + (w + t - 1) + ' 2.5 C' + (w + 8) + ' 8 ' + w + ' 14 ' + w + ' 28' +
+      ' V' + (h - r) + ' A' + r + ' ' + r + ' 0 0 1 ' + (w - r) + ' ' + h + ' H' + r + ' A' + r + ' ' + r + ' 0 0 1 0 ' + (h - r) +
+      ' V' + r + ' A' + r + ' ' + r + ' 0 0 1 ' + r + ' 0 Z';
+  }
+
+  function layoutBubble() {
+    const host = $('ask');
+    const w = 280;
+    const t = 15;
+    const h = Math.max(64, Math.ceil($('askBody').offsetHeight));
+    const d = bubblePath(w, t, h);
+    host.style.height = h + 'px';
+    host.style.setProperty('--bub', "path('" + d + "')");
+    const ring = '<svg xmlns="http://www.w3.org/2000/svg" width="' + (w + t) + '" height="' + h + '"><path d="' + d + '" fill="none" stroke="black" stroke-width="16"/></svg>';
+    host.style.setProperty('--ring', 'url("data:image/svg+xml,' + encodeURIComponent(ring) + '")');
+    const line = $('askLine');
+    line.setAttribute('width', String(w + t));
+    line.setAttribute('height', String(h));
+    line.setAttribute('viewBox', '0 0 ' + (w + t) + ' ' + h);
+    $('askOut').setAttribute('d', d);
+    $('askEdge').setAttribute('d', d);
+  }
+
+  function askSentence(n) {
+    if (n < 0) return -n + '일 지났어요. 어떻게 할까요?';
+    if (n === 0) return '오늘이에요. 진행해 볼까요?';
+    return ['', '하루', '이틀', '사흘'][n] + ' 남았어요. 진행해 볼까요?';
+  }
+
+  function showNotice(item) {
+    noticeNow = item;
+    const ask = $('ask');
+    const sched = $('sched');
+    const id = item ? item.id : '';
+    ask.hidden = !item || item.type !== 'ask';
+    sched.hidden = !item || item.type !== 'sched';
+    if (!item) {
+      shownNotice = '';
+      return;
+    }
+    if (item.type === 'ask') {
+      const p = $('askText');
+      p.textContent = '';
+      p.append('현황판에 넣어 두신 ');
+      const b = document.createElement('b');
+      b.textContent = item.v.title;
+      p.append(b, josa(item.v.title) + ' ' + askSentence(item.dd.n));
+      layoutBubble();
+    } else {
+      const time = /(\d{1,2}:\d{2})/.exec(item.v.full || '');
+      $('schedWhen').textContent = (item.dd.n === 0 ? '오늘' : '내일') + ' · ' + md(item.dd.at) + (time ? ' ' + time[1] : '');
+      $('schedWhat').textContent = item.v.title;
+      sched.title = item.v.title + (item.v.sub ? ' — ' + item.v.sub : '');
+    }
+    const el = item.type === 'ask' ? ask : sched;
+    if (shownNotice !== id) {
+      el.classList.remove('is-in');
+      void el.offsetWidth;
+      el.classList.add('is-in');
+    }
+    shownNotice = id;
+    placeWall();
+  }
+
+  async function markAsked(v) {
+    try {
+      await apply({ type: 'asked', key: v.key });
+    } catch (e) {}
+  }
+
+  $('askOpen').addEventListener('click', async () => {
+    const it = noticeNow;
+    if (!it || it.type !== 'ask') return;
+    const v = it.v;
+    const prompt = '현황판에 넣어 둔 "' + v.title + '"(' + md(it.dd.at) + ') 진행해 보자.' + (v.note ? ' 메모: ' + v.note : '');
+    const r = await api.openClaude(prompt);
+    if (r && r.ok) {
+      await markAsked(v);
+    } else {
+      $('askText').textContent = 'Claude 앱을 열지 못했어요. 앱이 깔려 있는지 확인해 주세요.';
+      layoutBubble();
+    }
+  });
+  $('askLater').addEventListener('click', () => {
+    const it = noticeNow;
+    if (!it || it.type !== 'ask') return;
+    snoozed[it.v.title] = dayKey(new Date(todayDate().getTime() + DAY));
+    saveJson('snooze', snoozed);
+    if (current) renderNotices(current);
+  });
+  $('askClose').addEventListener('click', () => {
+    const it = noticeNow;
+    if (it && it.type === 'ask') markAsked(it.v);
+  });
+  for (const id of ['schedOk', 'schedClose']) {
+    $(id).addEventListener('click', () => {
+      const it = noticeNow;
+      if (!it || it.type !== 'sched') return;
+      seenNotes[it.id] = 1;
+      saveJson('seen', seenNotes);
+      if (current) renderNotices(current);
+    });
+  }
+
+  // ── 추가할 때 날짜 · 알림 방식 ──
+  function setAddDate(d) {
+    addDate = d;
+    const btn = $('dateBtn');
+    btn.classList.toggle('is-set', !!d);
+    $('dateLabel').hidden = !d;
+    $('dateX').hidden = !d;
+    $('dateLabel').textContent = d ? dayLabel(d) : '';
+    $('kind').hidden = !d;
+    if (d) setKind(addKind);
+    renderCal();
+  }
+
+  function setKind(k) {
+    addKind = k === 'notify' ? 'notify' : 'ask';
+    $('kindNotify').classList.toggle('is-on', addKind === 'notify');
+    $('kindAsk').classList.toggle('is-on', addKind === 'ask');
+    $('kindNotify').setAttribute('aria-checked', addKind === 'notify' ? 'true' : 'false');
+    $('kindAsk').setAttribute('aria-checked', addKind === 'ask' ? 'true' : 'false');
+  }
+
+  function setCal(on) {
+    $('cal').hidden = !on;
+    $('dateBtn').setAttribute('aria-expanded', on ? 'true' : 'false');
+    if (on) {
+      const base = addDate || todayDate();
+      calView = new Date(base.getFullYear(), base.getMonth(), 1);
+      renderCal();
+    }
+  }
+
+  function renderCal() {
+    if ($('cal').hidden || !calView) return;
+    const today = todayDate();
+    const y = calView.getFullYear();
+    const m = calView.getMonth();
+    $('calMonth').textContent = y + '년 ' + (m + 1) + '월';
+    const atStart = y === today.getFullYear() && m === today.getMonth();
+    $('calPrev').classList.toggle('is-off', atStart);
+    const grid = $('calGrid');
+    grid.textContent = '';
+    for (let i = 0; i < 7; i++) {
+      const w = document.createElement('span');
+      w.className = 'wd' + (i === 0 ? ' sun' : '');
+      w.textContent = WEEK.charAt(i);
+      grid.appendChild(w);
+    }
+    const first = new Date(y, m, 1).getDay();
+    const days = new Date(y, m + 1, 0).getDate();
+    for (let i = 0; i < first; i++) {
+      const b = document.createElement('span');
+      b.className = 'day blank';
+      grid.appendChild(b);
+    }
+    for (let d = 1; d <= days; d++) {
+      const at = new Date(y, m, d);
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = String(d);
+      b.setAttribute('aria-label', (m + 1) + '월 ' + d + '일');
+      let cls = 'day';
+      if (at.getDay() === 0) cls += ' sun';
+      if (at.getTime() === today.getTime()) cls += ' today';
+      if (addDate && at.getTime() === addDate.getTime()) cls += ' sel';
+      b.className = cls;
+      b.disabled = at < today;
+      b.addEventListener('click', () => {
+        setAddDate(at);
+        setTimeout(() => setCal(false), 180);
+        $('addInput').focus();
+      });
+      grid.appendChild(b);
+    }
+  }
+
+  $('dateBtn').addEventListener('click', e => {
+    if (e.target.closest('#dateX')) {
+      setAddDate(null);
+      setCal(false);
+      $('addInput').focus();
+      return;
+    }
+    setCal($('cal').hidden);
+  });
+  $('calPrev').addEventListener('click', () => {
+    calView = new Date(calView.getFullYear(), calView.getMonth() - 1, 1);
+    renderCal();
+  });
+  $('calNext').addEventListener('click', () => {
+    calView = new Date(calView.getFullYear(), calView.getMonth() + 1, 1);
+    renderCal();
+  });
+  $('kindNotify').addEventListener('click', () => setKind('notify'));
+  $('kindAsk').addEventListener('click', () => setKind('ask'));
 
   // ── 시작 ──
   async function load() {
@@ -716,6 +1224,11 @@
   setInterval(() => { if (current) render(current); }, 10 * 60 * 1000); // 날짜가 바뀌면 D-day 갱신
 
   // 시험 스크립트용
-  window.__widget = { open: () => setOpen(true), close: () => setOpen(false), state: () => ({ open, pinned, stay, ignoring, menuKey, suppressHover }) };
+  window.__widget = {
+    open: () => setOpen(true),
+    close: () => setOpen(false),
+    tab: t => setTab(t, false),
+    state: () => ({ open, pinned, stay, ignoring, menuKey, suppressHover, tab, notice: noticeNow ? noticeNow.id : '' })
+  };
   load();
 })();

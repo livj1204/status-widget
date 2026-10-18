@@ -1,17 +1,24 @@
 'use strict';
 // STATUS.md 읽기·쓰기.
-// 칸: "## 할 일"(순서 = 우선순위), "## 보류", "## 완료". 이름이 다른 칸의 항목은 할 일로 본다.
+// 칸: "## 프로젝트"(있으면), "## 할 일"(순서 = 우선순위), "## 보류", "## 완료". 이름이 다른 칸의 항목은 할 일로 본다.
 // 한 줄: "- [ ] [태그] 제목 — 설명 ← 메모리 파일". 태그·설명·파일은 없어도 된다.
 // 완료 칸의 줄은 "- [x] ... (완료 10/17) ← 파일"처럼 끝난 날짜를 붙인다.
+// 프로젝트 줄 밑에 들여쓴 "- [x] / - [>] / - [ ]"는 단계다. [>]가 지금 하는 단계.
+// 위젯에서 추가한 줄은 "— 10/18 추가"가 붙고, 날짜를 고르면 "· 날짜 10/31 · 물어보기(또는 알림만)"도 붙는다.
 
 const ITEM_RE = /^- \[( |x|X)\] (.*)$/;
+const STEP_RE = /^(\s+)- \[( |x|X|>)\] (.*)$/;
 const HEAD_RE = /^##\s+(.+?)\s*$/;
 const TAG_RE = /^\[([^\]]{1,8})\]\s*/;
 const DATE_RE = /(\d{1,2})\/(\d{1,2})/;
 const DONE_MARK_RE = /\s*\(완료 (\d{1,2}\/\d{1,2})\)\s*$/;
+const ADDED_RE = /(\d{1,2})\/(\d{1,2}) 추가/;
+const WHEN_RE = /날짜 (\d{1,2})\/(\d{1,2})/;
+const ASKED_RE = /\d{1,2}\/\d{1,2} 물어봄/;
+const META_RE = /\d{1,2}\/\d{1,2} (추가|물어봄)/g;
 const TAGS = { '마감': 'due', '진행': 'doing', '대기': 'wait', '설치': 'install', '확인': 'check' };
 const TAG_OF = { due: '마감', doing: '진행', wait: '대기', install: '설치', check: '확인' };
-const TITLES = { todo: '할 일', hold: '보류', done: '완료' };
+const TITLES = { proj: '프로젝트', todo: '할 일', hold: '보류', done: '완료' };
 
 function trimBlank(lines) {
   let a = 0;
@@ -75,6 +82,7 @@ function serialize(doc, eol) {
 
 function areaOf(sec) {
   const t = sec.title.trim();
+  if (t === TITLES.proj) return 'proj';
   if (t === TITLES.hold) return 'hold';
   if (t === TITLES.done) return 'done';
   return 'todo';
@@ -134,19 +142,50 @@ function describe(key, it, area) {
     sub = main.slice(dash + 3).trim();
   }
   const cat = TAGS[tag] || 'etc';
+  const dateOf = re => {
+    const d = re.exec(main.replace(META_RE, ''));
+    return d ? { m: Number(d[1]), d: Number(d[2]) } : null;
+  };
+  // 위젯에서 직접 넣은 줄: 날짜(날짜 M/D, 없으면 글 속 M/D)·알림 방식·물어봤는지
+  const added = ADDED_RE.exec(sub);
+  const user = !!added;
   let due = null;
-  if (cat === 'due') {
-    const d = DATE_RE.exec(main);
-    if (d) due = { m: Number(d[1]), d: Number(d[2]) };
+  let kind = '';
+  let asked = false;
+  let note = '';
+  if (user) {
+    due = dateOf(WHEN_RE) || dateOf(DATE_RE);
+    kind = /알림만/.test(sub) ? 'notify' : 'ask';
+    asked = ASKED_RE.test(sub);
+    note = sub.slice(0, added.index).replace(/\s*—\s*$/, '').trim();
+  } else if (cat === 'due') {
+    due = dateOf(DATE_RE);
   }
-  return { key, tag, cat, title, sub, ref, doneAt, full: it.body, done: it.done, area, due };
+  return { key, tag, cat, title, sub, ref, doneAt, full: it.body, done: it.done, area, due, user, kind, asked, note };
+}
+
+// 프로젝트 줄 밑의 단계들: [x] 끝남 · [>] 지금 · [ ] 남음
+function stepsOf(it) {
+  const out = [];
+  it.cont.forEach((line, ci) => {
+    const m = STEP_RE.exec(line);
+    if (m) out.push({ ci, state: m[2] === '>' ? 'now' : m[2] === ' ' ? 'todo' : 'done', text: m[3].trim() });
+  });
+  return out;
+}
+
+function setStep(it, step, state) {
+  const m = STEP_RE.exec(it.cont[step.ci]);
+  it.cont[step.ci] = m[1] + '- [' + (state === 'done' ? 'x' : state === 'now' ? '>' : ' ') + '] ' + m[3];
 }
 
 function view(doc) {
-  const out = { todo: [], hold: [], done: [] };
+  const out = { proj: [], todo: [], hold: [], done: [] };
   keyed(doc, (key, it, sec) => {
     const area = areaOf(sec);
-    out[area].push(describe(key, it, area));
+    const v = describe(key, it, area);
+    if (area === 'proj') v.steps = stepsOf(it).map(s => ({ state: s.state, text: s.text }));
+    out[area].push(v);
   });
   return out;
 }
@@ -217,7 +256,9 @@ function applyOp(input, op) {
     const text = String(op.text || '').replace(/\s+/g, ' ').trim();
     if (!text) throw new Error('내용이 비어 있어요');
     const tag = TAG_OF[op.cat] || '대기';
-    insertAt(doc, 'todo', 3, { done: false, body: '[' + tag + '] ' + text + ' — ' + date + ' 추가', cont: [] });
+    let body = '[' + tag + '] ' + text + ' — ' + date + ' 추가';
+    if (/^\d{1,2}\/\d{1,2}$/.test(String(op.due || ''))) body += ' · 날짜 ' + op.due + ' · ' + (op.kind === 'notify' ? '알림만' : '물어보기');
+    insertAt(doc, 'todo', 3, { done: false, body, cont: [] });
     return doc;
   }
 
@@ -245,6 +286,28 @@ function applyOp(input, op) {
     case 'toggle':
       it.done = !it.done;
       break;
+    case 'step': {
+      // 단계 체크: 끝난 것을 누르면 다시 남음으로. 지금 하던 단계를 끝내면 다음 남은 단계가 지금이 된다
+      const steps = stepsOf(it);
+      const s = steps[op.idx];
+      if (!s) throw new Error('그 단계가 파일에서 바뀌었어요');
+      if (s.state === 'done') {
+        setStep(it, s, 'todo');
+      } else {
+        setStep(it, s, 'done');
+        if (s.state === 'now') {
+          const next = steps.slice(op.idx + 1).find(x => x.state !== 'done');
+          if (next && !steps.some(x => x !== s && x.state === 'now')) setStep(it, next, 'now');
+        }
+      }
+      break;
+    }
+    case 'asked': {
+      // 위젯이 날짜 알림으로 물어봤으면 표시해서 Claude가 다시 묻지 않게 한다
+      const p = splitRef(it.body);
+      if (!ASKED_RE.test(p.main)) it.body = joinRef(p.main + ' · ' + date + ' 물어봄', p.ref);
+      break;
+    }
     case 'remove':
     case 'purge':
       take();

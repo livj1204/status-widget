@@ -94,7 +94,7 @@ function snapshot(text, extra) {
   const v = status.view(status.parse(text));
   let mtime = 0;
   try { mtime = fs.statSync(FILE).mtimeMs; } catch (e) {}
-  return Object.assign({ ok: true, todo: v.todo, hold: v.hold, done: v.done, canUndo: undoStack.length > 0, mtime, path: FILE, name }, extra);
+  return Object.assign({ ok: true, proj: v.proj, todo: v.todo, hold: v.hold, done: v.done, canUndo: undoStack.length > 0, mtime, path: FILE, name }, extra);
 }
 
 function send(channel, payload) {
@@ -203,6 +203,19 @@ ipcMain.handle('status:undo', () => {
 });
 
 ipcMain.handle('status:open', () => shell.openPath(FILE));
+// 날짜 알림의 "Claude에서 열기": Claude 앱 Code 탭에 새 대화를 열고 질문을 미리 넣어 둔다 (보내기는 사용자가)
+ipcMain.handle('claude:open', async (_e, prompt) => {
+  const q = String(prompt || '').slice(0, 2000);
+  const url = 'claude://code/new?q=' + encodeURIComponent(q) + '&folder=' + encodeURIComponent(path.dirname(FILE));
+  logEvent('claude link');
+  if (TEST && process.env.STATUS_WIDGET_NO_LINK) return { ok: true, url };
+  try {
+    await shell.openExternal(url);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
+});
 ipcMain.handle('win:state', () => ({ pinned, stay, test: TEST, startOpen: !!process.env.STATUS_WIDGET_OPEN }));
 ipcMain.handle('win:pin', (_e, on) => setPinned(!!on));
 ipcMain.handle('win:stay', (_e, on) => {

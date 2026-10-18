@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('statusApi', {
   apply: op => ipcRenderer.invoke('status:apply', op),
   undo: () => ipcRenderer.invoke('status:undo'),
   openFile: () => ipcRenderer.invoke('status:open'),
+  openClaude: prompt => ipcRenderer.invoke('claude:open', String(prompt || '')),
   winState: () => ipcRenderer.invoke('win:state'),
   setPinned: on => ipcRenderer.invoke('win:pin', !!on),
   setStay: on => ipcRenderer.invoke('win:stay', !!on),
