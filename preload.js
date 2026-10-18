@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('statusApi', {
   dragStart: pt => ipcRenderer.invoke('win:drag-start', pt || null),
   dragMove: pt => ipcRenderer.send('win:drag-move', pt || null),
   dragEnd: () => ipcRenderer.invoke('win:drag-end'),
+  settle: () => ipcRenderer.invoke('win:settle'),
   resizeEnd: h => ipcRenderer.invoke('win:resize-end', Number(h)),
   getWall: () => ipcRenderer.invoke('wall:get'),
   onChanged: cb => ipcRenderer.on('status:changed', (_e, s) => cb(s)),

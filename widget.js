@@ -153,6 +153,8 @@
     if (!on) {
       closeMenu();
       setIgnore(true);
+      mqStopAll(); // 접히면 흐르던 전광판도 멈추고 잊는다
+      mqHost = null;
     }
   }
 
@@ -352,12 +354,30 @@
     if (p.last) api.dragMove(p.last); // 마지막 자리까지 옮긴 뒤 붙을 쪽을 정한다
     let r = null;
     try {
-      r = await api.dragEnd();
-    } catch (err) {}
+      r = await api.dragEnd(); // ① 붙을 쪽·창 자리 계산만
+      if (r && r.hide) {
+        // 창이 바뀌는 순간 한 박자 튀어 보이지 않게, 먼저 가리고 나서 옮긴다
+        body.classList.add('is-reanchor');
+        await frames(2);
+      }
+      if (r) {
+        await api.settle(); // ② 창 옮기기
+        applyAnchor(r, true);
+        if (r.hide) {
+          await frames(3);
+          body.classList.remove('is-reanchor');
+        }
+      }
+    } catch (err) {
+      body.classList.remove('is-reanchor');
+    }
     moving = false;
     body.classList.remove('is-moving');
-    if (r) applyAnchor(r);
   };
+  const frames = n => new Promise(res => {
+    const step = k => (k <= 0 ? res() : requestAnimationFrame(() => step(k - 1)));
+    step(n);
+  });
   document.addEventListener('pointerup', endPress, true);
   document.addEventListener('pointercancel', endPress, true);
   document.addEventListener('click', e => {
@@ -370,18 +390,19 @@
 
   // 화면 가장자리 쪽 붙기를 화면에 반영한다 (자리가 바뀌는 순간은 잠깐 숨겨 튀어 보이지 않게)
   let anchorKey = 'right down';
-  function applyAnchor(r) {
+  // quiet: 끌어 놓기에서는 가리기를 그쪽(endPress)이 맡는다. 트레이 "위치 처음으로" 등에서는 여기서 잠깐 가린다
+  function applyAnchor(r, quiet) {
     if (!r || !r.anchor) return;
     const key = r.anchor.h + ' ' + r.anchor.v;
     const changed = key !== anchorKey;
-    if (changed) body.classList.add('is-reanchor');
+    if (changed && !quiet) body.classList.add('is-reanchor');
     anchorKey = key;
     body.classList.toggle('anchor-left', r.anchor.h === 'left');
     body.classList.toggle('anchor-up', r.anchor.v === 'up');
     if (r.panelH) setPanelH(r.panelH);
     if (noticeNow && noticeNow.type === 'ask') layoutBubble();
     placeWall();
-    if (changed) setTimeout(() => body.classList.remove('is-reanchor'), 120);
+    if (changed && !quiet) setTimeout(() => body.classList.remove('is-reanchor'), 160);
   }
   api.onAnchor(applyAnchor);
 
@@ -1476,12 +1497,15 @@
   function mqRefresh() {
     if (mqHost && mqHost.isConnected && mqHost.matches(':hover')) {
       for (const el of mqHost.querySelectorAll(MQ_TARGETS)) mqStart(el);
+    } else {
+      mqHost = null; // 판이 접히는 등으로 커서가 떠났으면 잊는다 (다음에 같은 줄에 올려도 다시 흐르게)
     }
   }
   document.addEventListener('mouseover', e => {
     if (moving || resizing) return;
+    if (ignoreRealPointer && e.isTrusted) return; // 시험 중: 책상 위 진짜 마우스가 끼어들지 않게
     const h = e.target.closest ? e.target.closest(MQ_HOSTS) : null;
-    if (h === mqHost) return;
+    if (h && h === mqHost && h.querySelector('[data-mq]')) return; // 이미 흐르는 중
     if (mqHost) for (const el of mqHost.querySelectorAll('[data-mq]')) mqStop(el);
     mqHost = h;
     if (h) for (const el of h.querySelectorAll(MQ_TARGETS)) mqStart(el);

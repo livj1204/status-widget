@@ -48,13 +48,13 @@ function logEvent(msg) {
   } catch (e) {}
 }
 
-// 창 크기: 펼친 판(폭 340, 높이는 판 아래를 끌어서 조절) + 여백. 접히면 같은 창 안에 알약만 그리고 나머지는 클릭이 통과한다
+// 창 크기: 폭 380. 높이는 알약 자리부터 판이 펼쳐지는 쪽 화면 끝까지 넉넉하게 잡는다.
+// 판 길이를 바꿔도 창 크기는 그대로라 화면이 튀지 않는다 (판 밖 빈 곳은 투명하고 클릭이 통과한다)
 const WIN_W = 380;
-const PANEL_MARGIN = 48; // 판 위 14 + 아래 34
+const PANEL_MARGIN = 48; // 판과 창 끝 사이 여백 합 (알약 쪽 14 + 반대쪽 34)
 const PANEL_MIN = 420;
 const PANEL_DEFAULT = 652;
 let panelH = PANEL_DEFAULT;
-const winH = () => panelH + PANEL_MARGIN;
 // 알약 폭(오른쪽 핀 포함)과, 화면 어느 가장자리에 붙어 펼쳐질지(anchor)
 // h: right = 알약·판·알림이 오른쪽에 붙고 판이 왼쪽으로 펼쳐짐 / left = 그 반대
 // v: down = 알약이 위에 있고 판이 아래로 / up = 알약이 아래에 있고 판이 위로
@@ -69,6 +69,31 @@ function pillRect(b, a) {
 function clampPanel(h) {
   const n = Math.round(Number(h));
   return Number.isFinite(n) ? Math.max(PANEL_MIN, Math.min(n, 4000)) : PANEL_DEFAULT;
+}
+const workAreaAt = (x, y) => screen.getDisplayMatching({ x: Math.round(x), y: Math.round(y), width: PILL_W, height: PILL_H }).workArea;
+// 알약 자리(화면 좌표)와 붙는 쪽으로 창 자리를 정한다: 아래로 펼치면 알약~화면 아래 끝, 위로 펼치면 화면 위 끝~알약
+function boundsFor(px, py, a) {
+  const wa = workAreaAt(px, py);
+  const x = Math.round(px - pillLeftIn(a));
+  if (a.v === 'up') {
+    const bottom = Math.round(py + PILL_H + 14);
+    const top = Math.min(wa.y, bottom - (PANEL_MIN + PANEL_MARGIN));
+    return { x, y: top, width: WIN_W, height: bottom - top };
+  }
+  const top = Math.round(py - 14);
+  const bottom = Math.max(wa.y + wa.height, top + PANEL_MIN + PANEL_MARGIN);
+  return { x, y: top, width: WIN_W, height: bottom - top };
+}
+const fitPanel = height => { panelH = clampPanel(Math.min(panelH, height - PANEL_MARGIN)); };
+function defaultPill() {
+  const wa = screen.getPrimaryDisplay().workArea;
+  return { x: wa.x + wa.width - 6 - 20 - PILL_W, y: wa.y + 6 + 14 };
+}
+function pillOnScreen(p) {
+  return screen.getAllDisplays().some(d => {
+    const a = d.workArea;
+    return p.x + PILL_W - 40 > a.x && p.x + 40 < a.x + a.width && p.y + PILL_H - 10 > a.y && p.y + 10 < a.y + a.height;
+  });
 }
 
 let win = null;
@@ -238,34 +263,15 @@ ipcMain.handle('claude:open', async (_e, prompt) => {
   }
 });
 ipcMain.handle('win:state', () => ({ pinned, stay, panelH, anchor, test: TEST, startOpen: !!process.env.STATUS_WIDGET_OPEN }));
-// 판 가장자리를 끌어 높이 조절: 끄는 동안은 창을 화면 끝까지 늘려 두고(아래로 펼치면 아래 끝, 위로 펼치면 위 끝),
-// 놓으면 판 높이에 맞춰 줄인다. 알약이 있는 쪽은 그 자리에 그대로 있다
-let resizeBottom = null; // 위로 펼친 판을 늘리는 동안 알약이 있는 아래쪽 끝 (배율 반올림으로 밀리지 않게 기억)
+// 판 가장자리를 끌어 길이 조절: 창은 이미 화면 끝까지라 창 크기는 건드리지 않고 판 길이만 바꾼다
 ipcMain.handle('win:resize-begin', () => {
   if (!win || win.isDestroyed()) return null;
-  const b = win.getBounds();
-  const wa = screen.getDisplayMatching(b).workArea;
-  let nb;
-  resizeBottom = b.y + b.height;
-  if (anchor.v === 'up') {
-    const bottom = b.y + b.height;
-    const top = Math.min(b.y, wa.y);
-    nb = { x: b.x, y: top, width: WIN_W, height: bottom - top };
-  } else {
-    nb = { x: b.x, y: b.y, width: WIN_W, height: Math.max(winH(), wa.y + wa.height - b.y) };
-  }
-  win.setBounds(nb);
-  sendBounds();
-  return { min: PANEL_MIN, max: nb.height - PANEL_MARGIN };
+  return { min: PANEL_MIN, max: win.getBounds().height - PANEL_MARGIN };
 });
 ipcMain.handle('win:resize-end', (_e, h) => {
   if (!win || win.isDestroyed()) return panelH;
   panelH = clampPanel(h);
-  const b = win.getBounds();
-  if (anchor.v === 'up') win.setBounds({ x: b.x, y: (resizeBottom === null ? b.y + b.height : resizeBottom) - winH(), width: WIN_W, height: winH() });
-  else win.setBounds({ x: b.x, y: b.y, width: WIN_W, height: winH() });
-  resizeBottom = null;
-  sendBounds();
+  fitPanel(win.getBounds().height);
   saveWinState();
   logEvent('panel height ' + panelH);
   return panelH;
@@ -287,17 +293,34 @@ ipcMain.on('win:drag-move', (_e, pt) => {
   const c = cursorAt(pt);
   win.setPosition(Math.round(dragFrom.bx + c.x - dragFrom.cx), Math.round(dragFrom.by + c.y - dragFrom.cy));
 });
+// 놓으면 두 단계로 자리를 잡는다: ① 여기서 붙을 쪽·창 자리를 계산해 알려 주고(화면이 필요하면 잠깐 가림)
+// ② 화면이 'win:settle'을 부르면 그때 창을 옮긴다. 창이 먼저 바뀌고 화면이 한 박자 늦어 튀어 보이는 것을 막는다
+let pending = null;
 ipcMain.handle('win:drag-end', () => {
   if (!dragFrom || !win || win.isDestroyed()) return null;
   dragFrom = null;
-  return settleAnchor();
+  pending = planSettle();
+  return { anchor: pending.anchor, panelH: pending.panelH, hide: pending.hide };
+});
+ipcMain.handle('win:settle', () => {
+  if (!pending || !win || win.isDestroyed()) return false;
+  const p = pending;
+  pending = null;
+  anchor = p.anchor;
+  panelH = p.panelH;
+  win.setBounds(p.bounds);
+  sendBounds();
+  sendWall();
+  saveWinState();
+  if (p.changed) logEvent('anchor ' + anchor.h + ' ' + anchor.v);
+  return true;
 });
 
 // 놓은 자리에서 가까운 화면 가장자리 쪽으로 붙는다. 알약은 놓은 자리에 그대로 두고 창만 다시 맞춘다
-function settleAnchor() {
+function planSettle() {
   const b = win.getBounds();
   const p = pillRect(b, anchor);
-  const wa = screen.getDisplayMatching(p).workArea;
+  const wa = workAreaAt(p.x, p.y);
   // 알약을 화면 가장자리 밖으로 걸쳐 놓았으면 화면 안으로 당겨 넣는다
   p.x = Math.min(Math.max(p.x, wa.x + 4), wa.x + wa.width - p.width - 4);
   p.y = Math.min(Math.max(p.y, wa.y + 4), wa.y + wa.height - p.height - 4);
@@ -309,17 +332,13 @@ function settleAnchor() {
   let v = cy > wa.y + wa.height / 2 ? 'up' : 'down';
   if (v === 'down' && down < panelH && up > down) v = 'up';
   if (v === 'up' && up < panelH && down > up) v = 'down';
-  const room = v === 'down' ? down : up;
-  if (room < panelH) panelH = clampPanel(room - 4);
+  const a = { h, v };
+  const bounds = boundsFor(p.x, p.y, a);
+  const ph = clampPanel(Math.min(panelH, bounds.height - PANEL_MARGIN));
   const changed = h !== anchor.h || v !== anchor.v;
-  anchor = { h, v };
-  const height = winH();
-  win.setBounds({ x: p.x - pillLeftIn(anchor), y: p.y - pillTopIn(anchor, height), width: WIN_W, height });
-  sendBounds();
-  sendWall();
-  saveWinState();
-  if (changed) logEvent('anchor ' + h + ' ' + v);
-  return { anchor, panelH };
+  // 위로 펼칠 때는 판이 창 아래쪽 기준이라, 창 높이가 바뀌는 순간 한 박자 튈 수 있다 → 그때만 잠깐 가린다
+  const hide = changed || (v === 'up' && bounds.height !== b.height);
+  return { anchor: a, panelH: ph, bounds, changed, hide };
 }
 ipcMain.handle('win:pin', (_e, on) => setPinned(!!on));
 ipcMain.handle('win:stay', (_e, on) => {
@@ -449,25 +468,13 @@ function saveWinState() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     if (!win || win.isDestroyed()) return;
-    const b = win.getBounds();
+    const p = pillRect(win.getBounds(), anchor); // 창 대신 알약 자리를 기억한다 (창 높이는 화면에 따라 다시 정한다)
     try {
       fs.mkdirSync(app.getPath('userData'), { recursive: true });
       const keep = loadWinState().file;
-      fs.writeFileSync(stateFile(), JSON.stringify(Object.assign({ x: b.x, y: b.y, pinned, stay, panelH, anchor }, keep ? { file: keep } : {})));
+      fs.writeFileSync(stateFile(), JSON.stringify(Object.assign({ pill: { x: p.x, y: p.y }, pinned, stay, panelH, anchor }, keep ? { file: keep } : {})));
     } catch (e) {}
   }, 400);
-}
-
-function defaultBounds() {
-  const wa = screen.getPrimaryDisplay().workArea;
-  return { x: wa.x + wa.width - WIN_W - 6, y: wa.y + 6, width: WIN_W, height: winH() };
-}
-
-function onScreen(b) {
-  return screen.getAllDisplays().some(d => {
-    const a = d.workArea;
-    return b.x + b.width - 60 > a.x && b.x + 60 < a.x + a.width && b.y > a.y - 40 && b.y < a.y + a.height - 80;
-  });
 }
 
 function setPinned(on) {
@@ -489,8 +496,11 @@ function showWindow() {
 function resetPosition() {
   if (!win || win.isDestroyed()) return;
   anchor = { h: 'right', v: 'down' };
+  const p = defaultPill();
+  const b = boundsFor(p.x, p.y, anchor);
+  fitPanel(b.height);
   send('win:anchor', { anchor, panelH });
-  win.setBounds(defaultBounds());
+  win.setBounds(b);
   sendBounds();
   sendWall();
   saveWinState();
@@ -503,32 +513,21 @@ function createWindow() {
   stay = !!st.stay;
   if (st.panelH) panelH = clampPanel(st.panelH);
   if (st.anchor && /^(left|right)$/.test(st.anchor.h) && /^(up|down)$/.test(st.anchor.v)) anchor = { h: st.anchor.h, v: st.anchor.v };
-  let bounds = defaultBounds();
-  if (Number.isFinite(st.x) && Number.isFinite(st.y)) {
-    const saved = { x: st.x, y: st.y, width: WIN_W, height: winH() };
-    if (onScreen(saved)) bounds = saved;
-    else anchor = { h: 'right', v: 'down' };
-  } else {
+  // 기억해 둔 알약 자리(옛 버전은 창 자리에서 계산)에서 창 자리를 정한다. 화면 밖이면 처음 자리로
+  let pill = null;
+  if (st.pill && Number.isFinite(st.pill.x) && Number.isFinite(st.pill.y)) pill = { x: st.pill.x, y: st.pill.y };
+  else if (Number.isFinite(st.x) && Number.isFinite(st.y)) pill = { x: st.x + pillLeftIn(anchor), y: st.y + (anchor.v === 'up' ? panelH + PANEL_MARGIN - 14 - PILL_H : 14) };
+  if (!pill || !pillOnScreen(pill)) {
     anchor = { h: 'right', v: 'down' };
+    pill = defaultPill();
   }
-  // 늘려 둔 판이 지금 화면보다 길면 화면 안에 들어오게 줄인다 (알약 자리는 그대로)
-  const wa = screen.getDisplayMatching(bounds).workArea;
-  if (anchor.v === 'up') {
-    const over = wa.y - (bounds.y + 34);
-    if (over > 0) {
-      panelH = clampPanel(panelH - over);
-      bounds.y = bounds.y + bounds.height - winH();
-      bounds.height = winH();
-    }
-  } else if (bounds.y + winH() > wa.y + wa.height) {
-    panelH = clampPanel(wa.y + wa.height - bounds.y - PANEL_MARGIN);
-    bounds.height = winH();
-  }
+  const bounds = boundsFor(pill.x, pill.y, anchor);
+  fitPanel(bounds.height); // 늘려 둔 판이 지금 화면보다 길면 화면 안에 들어오게 줄인다
   win = new BrowserWindow({
     x: bounds.x,
     y: bounds.y,
     width: WIN_W,
-    height: winH(),
+    height: bounds.height,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -605,6 +604,7 @@ function redrawSoon(why) {
 function buildTrayMenu() {
   if (!tray) return;
   tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '현황판 위젯 ' + app.getVersion(), enabled: false }, // 친구가 어느 버전을 쓰는지 바로 볼 수 있게
     { label: '현황판 펼치기', click: showWindow },
     { label: '항상 위에 두기', type: 'checkbox', checked: pinned, click: mi => setPinned(mi.checked) },
     { label: '펼친 채로 두기', type: 'checkbox', checked: stay, click: mi => { stay = mi.checked; send('win:stay', stay); saveWinState(); } },
@@ -623,7 +623,7 @@ function buildTrayMenu() {
 
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(path.join(__dirname, 'tray.png')));
-  tray.setToolTip('현황판');
+  tray.setToolTip('현황판 ' + app.getVersion());
   tray.on('click', () => {
     if (!win.isVisible()) win.showInactive();
     send('win:open', true);

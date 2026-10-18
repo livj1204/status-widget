@@ -114,7 +114,8 @@ body.anchor-up.anchor-left .pill,body.anchor-up.anchor-left .panel{transform-ori
 body.is-reanchor .pill,body.is-reanchor .panel,body.is-reanchor .notice{opacity:0!important;transition:none!important}
 body.anchor-up #pinBtn .i-up{transform:rotate(180deg)} /* 위로 펼친 판은 아래(알약 쪽)로 접힌다 */
 body.is-moving,body.is-moving *{cursor:grabbing!important}
-.sizeGrip{position:absolute;left:44px;right:44px;bottom:0;height:11px;z-index:3;display:grid;place-items:center;cursor:ns-resize;touch-action:none}
+/* 길이 조절 손잡이는 가운데 작은 막대 자리만. 나머지 가장자리는 잡고 끌면 위젯이 옮겨진다 */
+.sizeGrip{position:absolute;left:50%;width:64px;margin-left:-32px;bottom:0;height:10px;z-index:3;display:grid;place-items:center;cursor:ns-resize;touch-action:none}
 body.anchor-up .sizeGrip{bottom:auto;top:0}
 .sizeGrip span{width:38px;height:4px;border-radius:999px;background:var(--fg2);opacity:0;transform:scaleX(.7);transition:opacity .2s ease,transform .3s cubic-bezier(.3,1.7,.5,1)}
 .panel:hover .sizeGrip span{opacity:.35}
