@@ -1,7 +1,7 @@
 {
   "name": "status-widget",
   "productName": "현황판 위젯",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "STATUS.md 할 일 목록을 바탕화면에 Liquid Glass 위젯으로 띄우고 고치는 Windows용 위젯 (Claude Code와 함께 쓰기 좋게)",
   "author": "livj1204",

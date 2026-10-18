@@ -163,8 +163,50 @@
   }
 
   function canAutoClose() {
-    return !pinned && !dragKey && $('addBox').hidden && $('tonePop').hidden;
+    return !pinned && !dragKey && !resizing && $('addBox').hidden && $('tonePop').hidden;
   }
+
+  // ── 판 아래를 끌어서 높이 조절 ──
+  let panelH = 652;
+  let resizing = false;
+  function setPanelH(h) {
+    panelH = Math.round(h);
+    body.style.setProperty('--panel-h', panelH + 'px');
+    body.style.setProperty('--panel-sy', (48 / panelH).toFixed(4));
+  }
+  $('sizeGrip').addEventListener('pointerdown', e => {
+    if (e.button !== 0 || resizing) return;
+    e.preventDefault();
+    const grip = $('sizeGrip');
+    try { grip.setPointerCapture(e.pointerId); } catch (err) {}
+    resizing = true;
+    body.classList.add('is-resizing');
+    setIgnore(false);
+    const startY = e.screenY;
+    const startH = panelH;
+    let lim = { min: 420, max: startH };
+    let want = startH;
+    const move = ev => {
+      want = startH + ev.screenY - startY;
+      setPanelH(Math.min(Math.max(want, lim.min), lim.max));
+    };
+    const ready = api.resizeBegin().then(r => {
+      if (r) lim = r;
+      setPanelH(Math.min(Math.max(want, lim.min), lim.max));
+    });
+    const end = async () => {
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', end);
+      grip.removeEventListener('pointercancel', end);
+      await ready;
+      setPanelH(await api.resizeEnd(panelH));
+      resizing = false;
+      body.classList.remove('is-resizing');
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', end);
+    grip.addEventListener('pointercancel', end);
+  });
 
   function setPinned(on) {
     pinned = !!on;
@@ -185,6 +227,7 @@
   }
 
   document.addEventListener('mousemove', e => {
+    if (resizing) return; // 끄는 동안은 커서가 판 밖으로 나가도 클릭 통과로 바꾸지 않는다
     const host = e.target.closest ? e.target.closest('.host') : null;
     const active = open ? $('panel') : $('pill');
     const inside = host === active;
@@ -436,12 +479,26 @@
   }
 
   const LIFT = '<path d="M6 4.5h12"/><path d="M12 20V9"/><path d="M7.5 13.5L12 9l4.5 4.5"/>';
+  const TRASH = '<path d="M5 7h14"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6.5 7l.8 11.2A2 2 0 0 0 9.3 20h5.4a2 2 0 0 0 2-1.8L17.5 7"/><path d="M9.5 7V5.5A1.5 1.5 0 0 1 11 4h2a1.5 1.5 0 0 1 1.5 1.5V7"/>';
+  const EYE_OFF = '<path d="M3 3l18 18"/><path d="M10.6 6.1A9.8 9.8 0 0 1 12 6c5 0 8.5 4.5 9.5 6-.4.7-1.3 1.9-2.6 3.1"/><path d="M6.6 7.6C4.6 8.9 3.1 10.8 2.5 12c1 1.5 4.5 6 9.5 6 1.6 0 3-.4 4.2-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>';
+  // 끝난 프로젝트는 위젯에서만 지운다 (파일은 그대로). 다시 단계가 생기면 저절로 다시 보인다
+  // (store는 아래 유리 색 부분에서 만들어지므로 처음 쓸 때 읽는다)
+  let hiddenSet = null;
+  function hiddenProj() {
+    if (!hiddenSet) {
+      try { hiddenSet = new Set(JSON.parse(store.get('hidden-proj') || '[]') || []); } catch (e) { hiddenSet = new Set(); }
+    }
+    return hiddenSet;
+  }
+  const saveHidden = () => store.set('hidden-proj', JSON.stringify([...hiddenProj()]));
+  const finishedProj = v => !!v.done || ((v.steps || []).length > 0 && v.steps.every(x => x.state === 'done'));
   const CHEV = '<path d="M8 10l4 4 4-4"/>';
   const CHECK = '<path d="M5 12.5l4.5 4.5L19 7.5"/>';
   const PJ_TEMPLATE =
     '<div class="pjHead" role="button" tabindex="0" aria-expanded="false">' +
     '<div class="pjRow"><span class="pjT"></span><span class="chip" hidden></span>' +
     '<button class="ib sm pjLift" type="button" aria-label="맨 위로" title="맨 위로 — 알약과 맨 위 줄에 띄우기">' + svg(LIFT, 15, 2) + '</button>' +
+    '<button class="ib sm pjHide" type="button" aria-label="위젯에서 지우기" title="위젯에서 지우기 (파일은 그대로)">' + svg(TRASH, 15, 2) + '</button>' +
     '<span class="pjPct"></span><span class="chev">' + svg(CHEV, 16, 2) + '</span></div>' +
     '<div class="pjSub pjDesc"><span class="tx"></span></div>' +
     '<span class="track"><span class="fill"></span></span>' +
@@ -490,6 +547,13 @@
         busy = false;
       }
     });
+    el.querySelector('.pjHide').addEventListener('click', e => {
+      e.stopPropagation();
+      hiddenProj().add(el.dataset.name);
+      saveHidden();
+      el.classList.add('is-leaving');
+      setTimeout(() => { if (current) render(current); }, 300);
+    });
     el.querySelector('.dfold').addEventListener('click', () => {
       const name = el.dataset.name;
       projDoneOpen.set(name, !projDoneOpen.get(name));
@@ -531,6 +595,8 @@
       chip.classList.toggle('is-late', dd.n < 0);
     }
     el.querySelector('.pjLift').hidden = i === 0;
+    el.querySelector('.pjHide').hidden = !finishedProj(v);
+    el.classList.remove('is-leaving');
     el.querySelector('.pjPct').textContent = inf.pct + '%';
     el.querySelector('.fill').style.width = inf.pct + '%';
     const desc = el.querySelector('.pjDesc');
@@ -575,15 +641,43 @@
     });
   }
 
+  // 숨긴(지운) 끝난 프로젝트: 맨 아래 접기 칸에서 다시 보이게 할 수 있다
+  const hidFold = document.createElement('div');
+  hidFold.className = 'pjHidden';
+  hidFold.innerHTML = '<button class="fold" type="button" aria-expanded="false">' + svg(EYE_OFF, 15, 2) +
+    '<span class="grow"></span><span class="chev">' + svg(CHEV, 16, 2) + '</span></button><div class="pjHidList" hidden></div>';
+  hidFold.querySelector('.fold').addEventListener('click', () => {
+    const list = hidFold.querySelector('.pjHidList');
+    list.hidden = !list.hidden;
+    hidFold.querySelector('.fold').setAttribute('aria-expanded', list.hidden ? 'false' : 'true');
+  });
+  const projEmpty = document.createElement('div');
+  projEmpty.className = 'empty';
+  projEmpty.textContent = '진행 중인 프로젝트가 없어요';
+
   function renderProjects(s) {
-    const projs = s.proj || [];
-    const has = projs.length > 0;
+    const all = s.proj || [];
+    // 다시 단계가 생겨 안 끝난 상태가 되면 숨김을 푼다
+    let changed = false;
+    for (const name of [...hiddenProj()]) {
+      const v = all.find(p => p.title === name);
+      if (v && !finishedProj(v)) {
+        hiddenProj().delete(name);
+        changed = true;
+      }
+    }
+    if (changed) saveHidden();
+    const isHidden = v => hiddenProj().has(v.title) && finishedProj(v);
+    const projs = all.filter(v => !isHidden(v));
+    const hid = all.filter(isHidden);
+    const has = all.length > 0;
     $('tabs').hidden = !has;
     if (!has && tab === 'proj') setTab('todo');
     $('tabTodoCount').textContent = String(s.todo.filter(v => !v.done).length);
     $('tabProjCount').textContent = String(projs.length);
     const live = new Set();
     const box = $('projPane');
+    projEmpty.remove();
     projs.forEach((v, i) => {
       live.add(v.key);
       let el = pjNodes.get(v.key);
@@ -600,6 +694,33 @@
         el.remove();
         pjNodes.delete(k);
       }
+    }
+    if (!projs.length && has) box.appendChild(projEmpty);
+    if (hid.length) {
+      hidFold.querySelector('.grow').textContent = '지운 프로젝트 ' + hid.length;
+      const list = hidFold.querySelector('.pjHidList');
+      list.textContent = '';
+      for (const v of hid) {
+        const row = document.createElement('div');
+        row.className = 'pjHidRow';
+        const t = document.createElement('span');
+        t.className = 'tx';
+        t.textContent = v.title;
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'nb';
+        b.textContent = '다시 보이기';
+        b.addEventListener('click', () => {
+          hiddenProj().delete(v.title);
+          saveHidden();
+          if (current) render(current);
+        });
+        row.append(t, b);
+        list.appendChild(row);
+      }
+      box.appendChild(hidFold);
+    } else {
+      hidFold.remove();
     }
     // 맨 위 줄과 알약: 끝나지 않은 맨 위 프로젝트
     const top = projs.find(v => !v.done && (v.steps || []).length);
@@ -1217,6 +1338,7 @@
     placeWall();
   });
   api.winState().then(st => {
+    if (st.panelH) setPanelH(st.panelH);
     setStayUi(st.stay);
     if (st.startOpen) setOpen(true);
   });

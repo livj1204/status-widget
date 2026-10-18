@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('statusApi', {
   setIgnore: on => ipcRenderer.send('win:ignore', !!on),
   setTop: on => ipcRenderer.send('win:top', !!on),
   redraw: () => ipcRenderer.send('win:redraw'),
+  resizeBegin: () => ipcRenderer.invoke('win:resize-begin'),
+  resizeEnd: h => ipcRenderer.invoke('win:resize-end', Number(h)),
   getWall: () => ipcRenderer.invoke('wall:get'),
   onChanged: cb => ipcRenderer.on('status:changed', (_e, s) => cb(s)),
   onPinned: cb => ipcRenderer.on('win:pinned', (_e, on) => cb(on)),

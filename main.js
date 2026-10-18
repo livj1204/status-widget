@@ -46,9 +46,17 @@ function logEvent(msg) {
   } catch (e) {}
 }
 
-// 창 크기: 펼친 판(340×652) + 그림자 여백. 접히면 같은 창 안에 알약만 그리고 나머지는 클릭이 통과한다
+// 창 크기: 펼친 판(폭 340, 높이는 판 아래를 끌어서 조절) + 여백. 접히면 같은 창 안에 알약만 그리고 나머지는 클릭이 통과한다
 const WIN_W = 380;
-const WIN_H = 700;
+const PANEL_MARGIN = 48; // 판 위 14 + 아래 34
+const PANEL_MIN = 420;
+const PANEL_DEFAULT = 652;
+let panelH = PANEL_DEFAULT;
+const winH = () => panelH + PANEL_MARGIN;
+function clampPanel(h) {
+  const n = Math.round(Number(h));
+  return Number.isFinite(n) ? Math.max(PANEL_MIN, Math.min(n, 4000)) : PANEL_DEFAULT;
+}
 
 let win = null;
 let tray = null;
@@ -216,7 +224,27 @@ ipcMain.handle('claude:open', async (_e, prompt) => {
     return { ok: false, error: String(e && e.message || e) };
   }
 });
-ipcMain.handle('win:state', () => ({ pinned, stay, test: TEST, startOpen: !!process.env.STATUS_WIDGET_OPEN }));
+ipcMain.handle('win:state', () => ({ pinned, stay, panelH, test: TEST, startOpen: !!process.env.STATUS_WIDGET_OPEN }));
+// 판 아래를 끌어 높이 조절: 끄는 동안은 창을 화면 아래 끝까지 늘려 두고, 놓으면 판 높이에 맞춰 줄인다
+ipcMain.handle('win:resize-begin', () => {
+  if (!win || win.isDestroyed()) return null;
+  const b = win.getBounds();
+  const wa = screen.getDisplayMatching(b).workArea;
+  const maxWin = Math.max(winH(), wa.y + wa.height - b.y);
+  win.setBounds({ x: b.x, y: b.y, width: WIN_W, height: maxWin });
+  sendBounds();
+  return { min: PANEL_MIN, max: maxWin - PANEL_MARGIN };
+});
+ipcMain.handle('win:resize-end', (_e, h) => {
+  if (!win || win.isDestroyed()) return panelH;
+  panelH = clampPanel(h);
+  const b = win.getBounds();
+  win.setBounds({ x: b.x, y: b.y, width: WIN_W, height: winH() });
+  sendBounds();
+  saveWinState();
+  logEvent('panel height ' + panelH);
+  return panelH;
+});
 ipcMain.handle('win:pin', (_e, on) => setPinned(!!on));
 ipcMain.handle('win:stay', (_e, on) => {
   stay = !!on;
@@ -349,14 +377,14 @@ function saveWinState() {
     try {
       fs.mkdirSync(app.getPath('userData'), { recursive: true });
       const keep = loadWinState().file;
-      fs.writeFileSync(stateFile(), JSON.stringify(Object.assign({ x: b.x, y: b.y, pinned, stay }, keep ? { file: keep } : {})));
+      fs.writeFileSync(stateFile(), JSON.stringify(Object.assign({ x: b.x, y: b.y, pinned, stay, panelH }, keep ? { file: keep } : {})));
     } catch (e) {}
   }, 400);
 }
 
 function defaultBounds() {
   const wa = screen.getPrimaryDisplay().workArea;
-  return { x: wa.x + wa.width - WIN_W - 6, y: wa.y + 6, width: WIN_W, height: WIN_H };
+  return { x: wa.x + wa.width - WIN_W - 6, y: wa.y + 6, width: WIN_W, height: winH() };
 }
 
 function onScreen(b) {
@@ -392,16 +420,23 @@ function createWindow() {
   const st = loadWinState();
   pinned = !!st.pinned;
   stay = !!st.stay;
+  if (st.panelH) panelH = clampPanel(st.panelH);
   let bounds = defaultBounds();
   if (Number.isFinite(st.x) && Number.isFinite(st.y)) {
-    const saved = { x: st.x, y: st.y, width: WIN_W, height: WIN_H };
+    const saved = { x: st.x, y: st.y, width: WIN_W, height: winH() };
     if (onScreen(saved)) bounds = saved;
+  }
+  // 늘려 둔 판이 지금 화면보다 길면 화면 안에 들어오게 줄인다
+  const wa = screen.getDisplayMatching(bounds).workArea;
+  if (bounds.y + winH() > wa.y + wa.height) {
+    panelH = clampPanel(wa.y + wa.height - bounds.y - PANEL_MARGIN);
+    bounds.height = winH();
   }
   win = new BrowserWindow({
     x: bounds.x,
     y: bounds.y,
     width: WIN_W,
-    height: WIN_H,
+    height: winH(),
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
