@@ -62,7 +62,7 @@
       <span>알약에 커서를 올리면 잠깐 보기 · 치우면 다시 접혀요</span>
       <span>알약을 누르면 고정(다른 창 위에도) · ˄ 누르면 다시 자동</span>
       <span>"현황판" 글자를 잡고 끌면 위젯을 옮겨요</span>
-      <span>맨 아래 파일 이름 — STATUS.md 열기</span>
+      <span>맨 아래 파일 이름 — STATUS.md 열기 · 톱니 — 유리 색</span>
     </div>
 
     <div id="addBox" class="addBox pop" hidden>
@@ -99,9 +99,25 @@
 
     <footer class="foot">
       <button id="file" class="fileBtn" type="button" title="STATUS.md 열기"><span class="dot" aria-hidden="true"></span><span id="footText">STATUS.md</span></button>
+      <span class="grow"></span>
+      <button id="toneBtn" class="ib sm" type="button" aria-label="유리 색" aria-expanded="false" aria-controls="tonePop" title="유리 색"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
     </footer>
   </div>
   <div class="g-edge" aria-hidden="true"></div>
+  <div id="tonePop" class="tonePop" hidden>
+    <div class="toneRow" role="radiogroup" aria-label="유리 색">
+      <button class="sw sw-smoke" type="button" role="radio" aria-checked="true" data-tone="smoke" aria-label="스모크" title="스모크"></button>
+      <button class="sw sw-milk" type="button" role="radio" aria-checked="false" data-tone="milk" aria-label="밀크" title="밀크"></button>
+      <button class="sw sw-ice" type="button" role="radio" aria-checked="false" data-tone="ice" aria-label="아이스" title="아이스"></button>
+      <button class="sw sw-lavender" type="button" role="radio" aria-checked="false" data-tone="lavender" aria-label="라벤더" title="라벤더"></button>
+      <button id="swCustom" class="sw sw-custom" type="button" role="radio" aria-checked="false" data-tone="custom" aria-label="직접 고른 색" title="직접 고르기"></button>
+    </div>
+    <div id="customRow" class="toneRow customRow" hidden>
+      <input id="colorIn" class="colorIn" type="color" value="#7ab8e6" aria-label="팔레트에서 고르기" title="팔레트에서 고르기">
+      <input id="hexIn" class="hexIn" type="text" maxlength="7" spellcheck="false" autocomplete="off" placeholder="#7ab8e6" aria-label="색 코드">
+      <button id="hexGo" class="ib sm" type="button" aria-label="색 코드 적용" title="적용"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></button>
+    </div>
+  </div>
   <div id="toast" class="toast" role="status" hidden></div>
 </section>
 <script src="widget.js"></script>

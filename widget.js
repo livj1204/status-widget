@@ -141,7 +141,7 @@
   }
 
   function canAutoClose() {
-    return !pinned && !dragKey && $('addBox').hidden;
+    return !pinned && !dragKey && $('addBox').hidden && $('tonePop').hidden;
   }
 
   function setPinned(on) {
@@ -508,6 +508,102 @@
     $('info').setAttribute('aria-expanded', p.hidden ? 'false' : 'true');
   });
   $('file').addEventListener('click', () => api.openFile());
+
+  // ── 유리 색 (오른쪽 아래 톱니) ──
+  const TONES = ['smoke', 'milk', 'ice', 'lavender'];
+  const CUSTOM_VARS = ['--tint', '--rim-tint', '--bright', '--rim-bright'];
+  const store = {
+    get: k => { try { return localStorage.getItem('status-widget-' + k); } catch (e) { return null; } },
+    set: (k, v) => { try { localStorage.setItem('status-widget-' + k, v); } catch (e) {} }
+  };
+
+  function markTone(t) {
+    for (const sw of document.querySelectorAll('#tonePop .sw')) {
+      sw.setAttribute('aria-checked', sw.dataset.tone === t ? 'true' : 'false');
+    }
+  }
+
+  function setTone(tone, save) {
+    const t = TONES.includes(tone) ? tone : 'smoke';
+    for (const v of CUSTOM_VARS) body.style.removeProperty(v);
+    body.dataset.tone = t;
+    markTone(t);
+    $('customRow').hidden = true;
+    if (save) store.set('tone', t);
+  }
+
+  function parseHex(text) {
+    let h = String(text || '').trim().replace(/^#/, '');
+    if (/^[0-9a-f]{3}$/i.test(h)) h = h.split('').map(c => c + c).join('');
+    if (!/^[0-9a-f]{6}$/i.test(h)) return null;
+    return { hex: '#' + h.toLowerCase(), r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
+  }
+
+  // 직접 고른 색: 밝은 색이면 진한 글자(밀크 계열), 어두운 색이면 흰 글자(스모크 계열)
+  function setCustom(text, save) {
+    const c = parseHex(text);
+    if (!c) return false;
+    const light = (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) / 255 > 0.58;
+    body.dataset.tone = light ? 'custom-light' : 'custom-dark';
+    body.style.setProperty('--tint', 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + (light ? 0.6 : 0.52) + ')');
+    body.style.setProperty('--rim-tint', 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',.3)');
+    body.style.setProperty('--bright', light ? '1.22' : '.75');
+    body.style.setProperty('--rim-bright', light ? '1.15' : '.85');
+    $('swCustom').style.background = c.hex;
+    $('colorIn').value = c.hex;
+    $('hexIn').value = c.hex;
+    $('hexIn').classList.remove('is-bad');
+    markTone('custom');
+    if (save) {
+      store.set('tone', 'custom');
+      store.set('custom', c.hex);
+    }
+    return true;
+  }
+
+  function setTonePop(on) {
+    $('tonePop').hidden = !on;
+    $('toneBtn').classList.toggle('is-on', on);
+    $('toneBtn').setAttribute('aria-expanded', on ? 'true' : 'false');
+    if (on) $('customRow').hidden = !String(body.dataset.tone).startsWith('custom');
+  }
+
+  $('toneBtn').addEventListener('click', () => setTonePop($('tonePop').hidden));
+  for (const sw of document.querySelectorAll('#tonePop .sw')) {
+    sw.addEventListener('click', () => {
+      if (sw.dataset.tone !== 'custom') {
+        setTone(sw.dataset.tone, true);
+        return;
+      }
+      setCustom(store.get('custom') || $('colorIn').value, true);
+      $('customRow').hidden = false;
+      setTimeout(() => $('hexIn').focus(), 30);
+    });
+  }
+  $('colorIn').addEventListener('input', () => setCustom($('colorIn').value, false)); // 팔레트에서 움직이는 동안 미리 보기
+  $('colorIn').addEventListener('change', () => setCustom($('colorIn').value, true));
+  function applyHex() {
+    if (!setCustom($('hexIn').value, true)) $('hexIn').classList.add('is-bad');
+  }
+  $('hexGo').addEventListener('click', applyHex);
+  $('hexIn').addEventListener('keydown', e => {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      applyHex();
+    } else if (e.key === 'Escape') {
+      setTonePop(false);
+    }
+  });
+  document.addEventListener('click', e => {
+    if (!$('tonePop').hidden && !e.target.closest('#tonePop') && !e.target.closest('#toneBtn')) setTonePop(false);
+  });
+
+  const savedTone = store.get('tone') || 'smoke';
+  const savedCustom = store.get('custom');
+  if (savedCustom) $('swCustom').style.background = savedCustom;
+  if (savedTone === 'custom' && savedCustom) setCustom(savedCustom, false);
+  else setTone(savedTone, false);
 
   function setFold(btnId, listId, on) {
     $(listId).hidden = !on;

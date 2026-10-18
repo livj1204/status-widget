@@ -247,10 +247,19 @@ async function loadWallpaper() {
   try {
     const style = await regQuery('HKCU\\Control Panel\\Desktop', 'WallpaperStyle');
     const tile = await regQuery('HKCU\\Control Panel\\Desktop', 'TileWallpaper');
-    const color = await regQuery('HKCU\\Control Panel\\Colors', 'Background');
-    let file = path.join(process.env.APPDATA || '', 'Microsoft', 'Windows', 'Themes', 'TranscodedWallpaper');
-    if (!fs.existsSync(file)) file = await regQuery('HKCU\\Control Panel\\Desktop', 'WallPaper');
-    if (TEST && process.env.STATUS_WIDGET_WALLPAPER) file = process.env.STATUS_WIDGET_WALLPAPER; // 소개 그림 찍을 때만
+    let color = await regQuery('HKCU\\Control Panel\\Colors', 'Background');
+    // 지금 쓰는 바탕화면 파일(레지스트리 WallPaper)이 먼저다. TranscodedWallpaper는 옛 그림으로 멈춰 있을 수 있다.
+    // WallPaper가 비어 있으면 단색 배경이다.
+    const current = await regQuery('HKCU\\Control Panel\\Desktop', 'WallPaper');
+    const transcoded = path.join(process.env.APPDATA || '', 'Microsoft', 'Windows', 'Themes', 'TranscodedWallpaper');
+    let file = '';
+    if (current && fs.existsSync(current)) file = current;
+    else if (current && fs.existsSync(transcoded)) file = transcoded; // 원본이 지워졌거나 임시 파일이면 사본으로
+    if (TEST && process.env.STATUS_WIDGET_WALLPAPER) file = process.env.STATUS_WIDGET_WALLPAPER; // 소개 그림·시험용
+    if (TEST && process.env.STATUS_WIDGET_WALLCOLOR) {
+      file = '';
+      color = process.env.STATUS_WIDGET_WALLCOLOR; // 단색 배경 시험용 "r g b"
+    }
     let stamp = style + '|' + tile + '|' + color + '|' + file;
     try { stamp += '|' + fs.statSync(file).mtimeMs; } catch (e) {}
     if (stamp === wallStamp && wall) return;
@@ -275,7 +284,7 @@ async function loadWallpaper() {
     else if (s === 22) fit = { size: 'cover', position: 'center', repeat: 'no-repeat', span: true };
     else if (s === 0 && tile === '1') fit = { size: 'auto', position: '0 0', repeat: 'repeat', span: false };
     else if (s === 0) fit = { size: 'auto', position: 'center', repeat: 'no-repeat', span: false };
-    wall = Object.assign({ url, bg }, fit);
+    wall = Object.assign({ url, bg, rgb: [rgb[0] || 0, rgb[1] || 0, rgb[2] || 0] }, fit);
     sendWall();
   } catch (e) {
     wall = { url: '', bg: 'rgb(30,40,60)', size: 'cover', position: 'center', repeat: 'no-repeat', span: false };

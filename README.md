@@ -63,6 +63,7 @@ Windows 10·11에서 쓸 수 있습니다.
 | 새 일 넣기 | + 버튼 → 내용을 쓰고 Enter |
 | 위젯 옮기기 | "현황판" 글자를 잡고 끕니다. |
 | 파일 직접 열기 | 맨 아래 파일 이름을 누릅니다. |
+| 유리 색 바꾸기 | 오른쪽 아래 톱니를 누르고 색을 고릅니다. 무지개 동그라미를 누르면 팔레트나 색 코드(예: `#7ab8e6`)로 직접 정할 수 있습니다. |
 | 끄기 | 체크 모양 아이콘 오른쪽 클릭 → 끝내기 |
 
 체크 모양 아이콘 메뉴에는 항상 위에 두기, 펼친 채로 두기(다음에 켤 때도 유지), 다른 현황판 파일 고르기, 새 현황판 만들기, 위치 처음으로, 다시 그리기도 있습니다.
@@ -110,7 +111,7 @@ Claude가 매번 이 파일을 보고 고치게 하려면, `~/.claude/CLAUDE.md`
 
 ### 알아 두면 좋은 점
 
-- 유리 너머로 비치는 그림은 **바탕화면 그림을 위젯 안에 맞춰 깔아서** 만든 것입니다. 그래서 "항상 위에 두기"로 다른 창 위에 띄우면, 그 창 대신 바탕화면 그림이 비쳐 보입니다.
+- 유리 너머로 비치는 그림은 **바탕화면 그림을 위젯 안에 맞춰 깔아서** 만든 것입니다. 색은 빼고 흑백으로만 비쳐서, 바탕화면이 무슨 색이든 위젯은 고른 유리 색으로 보입니다. "항상 위에 두기"로 다른 창 위에 띄우면, 그 창 대신 바탕화면의 모양이 비쳐 보입니다.
 - 글꼴은 인터넷에서 [프리텐다드](https://github.com/orioncactus/pretendard)를 불러옵니다. 인터넷이 안 되면 맑은 고딕으로 보입니다.
 - 켜 두면 메모리를 약 130MB 씁니다.
 - 투명한 부분이 하얗게 변하면 아이콘 메뉴의 **"다시 그리기"** 를 눌러 주세요. 무슨 일이 있었는지는 `%APPDATA%\현황판 위젯\events.log`에 남습니다.
@@ -196,6 +197,7 @@ Works on Windows 10 and 11.
 | Add an item | + button → type → Enter |
 | Move the widget | Drag the "현황판" title. |
 | Open the file | Click the file name at the bottom. |
+| Change the glass color | Click the gear at the bottom right and pick a color. The rainbow circle lets you set your own with a palette or a color code (e.g. `#7ab8e6`). |
 | Quit | Right-click the tray icon → 끝내기 (Quit) |
 
 The tray menu also has 항상 위에 두기 (Always on top), 펼친 채로 두기 (Keep open, remembered across restarts), 다른 현황판 파일 고르기 (Choose another board file), 새 현황판 만들기 (New board), 위치 처음으로 (Reset position), and 다시 그리기 (Redraw).
@@ -245,7 +247,7 @@ To use a different file, choose **"다른 현황판 파일 고르기…"** (Choo
 
 ### Good to know
 
-- The glass effect is made by placing **a copy of your desktop wallpaper** behind the widget. If you keep it "always on top" over other windows, you'll see the wallpaper rather than the window underneath.
+- The glass effect is made by placing **a copy of your desktop wallpaper** behind the widget. Its colors are removed — only light and shape show through — so the widget always keeps the glass color you picked, whatever your wallpaper looks like. If you keep it "always on top" over other windows, you'll see the wallpaper's shapes rather than the window underneath.
 - The font, [Pretendard](https://github.com/orioncactus/pretendard), is loaded from the internet. Offline, it falls back to Malgun Gothic.
 - It uses about 130 MB of memory while running.
 - If the transparent area ever turns white, choose **"다시 그리기"** (Redraw) from the tray menu. Events are logged to `%APPDATA%\현황판 위젯\events.log`.
