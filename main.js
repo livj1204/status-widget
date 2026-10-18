@@ -53,6 +53,17 @@ const PANEL_MIN = 420;
 const PANEL_DEFAULT = 652;
 let panelH = PANEL_DEFAULT;
 const winH = () => panelH + PANEL_MARGIN;
+// 알약 폭(오른쪽 핀 포함)과, 화면 어느 가장자리에 붙어 펼쳐질지(anchor)
+// h: right = 알약·판·알림이 오른쪽에 붙고 판이 왼쪽으로 펼쳐짐 / left = 그 반대
+// v: down = 알약이 위에 있고 판이 아래로 / up = 알약이 아래에 있고 판이 위로
+const PILL_W = 248;
+const PILL_H = 48;
+let anchor = { h: 'right', v: 'down' };
+const pillLeftIn = a => (a.h === 'left' ? 20 : WIN_W - 20 - PILL_W);
+const pillTopIn = (a, height) => (a.v === 'up' ? height - 14 - PILL_H : 14);
+function pillRect(b, a) {
+  return { x: b.x + pillLeftIn(a), y: b.y + pillTopIn(a, b.height), width: PILL_W, height: PILL_H };
+}
 function clampPanel(h) {
   const n = Math.round(Number(h));
   return Number.isFinite(n) ? Math.max(PANEL_MIN, Math.min(n, 4000)) : PANEL_DEFAULT;
@@ -224,27 +235,84 @@ ipcMain.handle('claude:open', async (_e, prompt) => {
     return { ok: false, error: String(e && e.message || e) };
   }
 });
-ipcMain.handle('win:state', () => ({ pinned, stay, panelH, test: TEST, startOpen: !!process.env.STATUS_WIDGET_OPEN }));
-// 판 아래를 끌어 높이 조절: 끄는 동안은 창을 화면 아래 끝까지 늘려 두고, 놓으면 판 높이에 맞춰 줄인다
+ipcMain.handle('win:state', () => ({ pinned, stay, panelH, anchor, test: TEST, startOpen: !!process.env.STATUS_WIDGET_OPEN }));
+// 판 가장자리를 끌어 높이 조절: 끄는 동안은 창을 화면 끝까지 늘려 두고(아래로 펼치면 아래 끝, 위로 펼치면 위 끝),
+// 놓으면 판 높이에 맞춰 줄인다. 알약이 있는 쪽은 그 자리에 그대로 있다
 ipcMain.handle('win:resize-begin', () => {
   if (!win || win.isDestroyed()) return null;
   const b = win.getBounds();
   const wa = screen.getDisplayMatching(b).workArea;
-  const maxWin = Math.max(winH(), wa.y + wa.height - b.y);
-  win.setBounds({ x: b.x, y: b.y, width: WIN_W, height: maxWin });
+  let nb;
+  if (anchor.v === 'up') {
+    const bottom = b.y + b.height;
+    const top = Math.min(b.y, wa.y);
+    nb = { x: b.x, y: top, width: WIN_W, height: bottom - top };
+  } else {
+    nb = { x: b.x, y: b.y, width: WIN_W, height: Math.max(winH(), wa.y + wa.height - b.y) };
+  }
+  win.setBounds(nb);
   sendBounds();
-  return { min: PANEL_MIN, max: maxWin - PANEL_MARGIN };
+  return { min: PANEL_MIN, max: nb.height - PANEL_MARGIN };
 });
 ipcMain.handle('win:resize-end', (_e, h) => {
   if (!win || win.isDestroyed()) return panelH;
   panelH = clampPanel(h);
   const b = win.getBounds();
-  win.setBounds({ x: b.x, y: b.y, width: WIN_W, height: winH() });
+  if (anchor.v === 'up') win.setBounds({ x: b.x, y: b.y + b.height - winH(), width: WIN_W, height: winH() });
+  else win.setBounds({ x: b.x, y: b.y, width: WIN_W, height: winH() });
   sendBounds();
   saveWinState();
   logEvent('panel height ' + panelH);
   return panelH;
 });
+
+// 아무 데나 끌어서 옮기기: 화면은 누른 순간의 창 위치와 커서 위치만 알려 주고, 옮기는 계산은 여기서 한다
+let dragFrom = null;
+// 시험할 때는 진짜 마우스가 안 움직이므로 화면이 알려 준 좌표를 쓴다
+const cursorAt = pt => (TEST && pt && Number.isFinite(pt.x) && Number.isFinite(pt.y) ? pt : screen.getCursorScreenPoint());
+ipcMain.handle('win:drag-start', (_e, pt) => {
+  if (!win || win.isDestroyed()) return false;
+  const b = win.getBounds();
+  const c = cursorAt(pt);
+  dragFrom = { bx: b.x, by: b.y, cx: c.x, cy: c.y };
+  return true;
+});
+ipcMain.on('win:drag-move', (_e, pt) => {
+  if (!dragFrom || !win || win.isDestroyed()) return;
+  const c = cursorAt(pt);
+  win.setPosition(Math.round(dragFrom.bx + c.x - dragFrom.cx), Math.round(dragFrom.by + c.y - dragFrom.cy));
+});
+ipcMain.handle('win:drag-end', () => {
+  if (!dragFrom || !win || win.isDestroyed()) return null;
+  dragFrom = null;
+  return settleAnchor();
+});
+
+// 놓은 자리에서 가까운 화면 가장자리 쪽으로 붙는다. 알약은 놓은 자리에 그대로 두고 창만 다시 맞춘다
+function settleAnchor() {
+  const b = win.getBounds();
+  const p = pillRect(b, anchor);
+  const wa = screen.getDisplayMatching(p).workArea;
+  const cx = p.x + p.width / 2;
+  const cy = p.y + p.height / 2;
+  const h = cx < wa.x + wa.width / 2 ? 'left' : 'right';
+  const down = wa.y + wa.height - p.y; // 알약 위쪽부터 화면 아래 끝까지
+  const up = p.y + p.height - wa.y; // 화면 위 끝부터 알약 아래쪽까지
+  let v = cy > wa.y + wa.height / 2 ? 'up' : 'down';
+  if (v === 'down' && down < panelH && up > down) v = 'up';
+  if (v === 'up' && up < panelH && down > up) v = 'down';
+  const room = v === 'down' ? down : up;
+  if (room < panelH) panelH = clampPanel(room - 4);
+  const changed = h !== anchor.h || v !== anchor.v;
+  anchor = { h, v };
+  const height = winH();
+  win.setBounds({ x: p.x - pillLeftIn(anchor), y: p.y - pillTopIn(anchor, height), width: WIN_W, height });
+  sendBounds();
+  sendWall();
+  saveWinState();
+  if (changed) logEvent('anchor ' + h + ' ' + v);
+  return { anchor, panelH };
+}
 ipcMain.handle('win:pin', (_e, on) => setPinned(!!on));
 ipcMain.handle('win:stay', (_e, on) => {
   stay = !!on;
@@ -377,7 +445,7 @@ function saveWinState() {
     try {
       fs.mkdirSync(app.getPath('userData'), { recursive: true });
       const keep = loadWinState().file;
-      fs.writeFileSync(stateFile(), JSON.stringify(Object.assign({ x: b.x, y: b.y, pinned, stay, panelH }, keep ? { file: keep } : {})));
+      fs.writeFileSync(stateFile(), JSON.stringify(Object.assign({ x: b.x, y: b.y, pinned, stay, panelH, anchor }, keep ? { file: keep } : {})));
     } catch (e) {}
   }, 400);
 }
@@ -412,7 +480,12 @@ function showWindow() {
 
 function resetPosition() {
   if (!win || win.isDestroyed()) return;
+  anchor = { h: 'right', v: 'down' };
+  send('win:anchor', { anchor, panelH });
   win.setBounds(defaultBounds());
+  sendBounds();
+  sendWall();
+  saveWinState();
   showWindow();
 }
 
@@ -421,14 +494,25 @@ function createWindow() {
   pinned = !!st.pinned;
   stay = !!st.stay;
   if (st.panelH) panelH = clampPanel(st.panelH);
+  if (st.anchor && /^(left|right)$/.test(st.anchor.h) && /^(up|down)$/.test(st.anchor.v)) anchor = { h: st.anchor.h, v: st.anchor.v };
   let bounds = defaultBounds();
   if (Number.isFinite(st.x) && Number.isFinite(st.y)) {
     const saved = { x: st.x, y: st.y, width: WIN_W, height: winH() };
     if (onScreen(saved)) bounds = saved;
+    else anchor = { h: 'right', v: 'down' };
+  } else {
+    anchor = { h: 'right', v: 'down' };
   }
-  // 늘려 둔 판이 지금 화면보다 길면 화면 안에 들어오게 줄인다
+  // 늘려 둔 판이 지금 화면보다 길면 화면 안에 들어오게 줄인다 (알약 자리는 그대로)
   const wa = screen.getDisplayMatching(bounds).workArea;
-  if (bounds.y + winH() > wa.y + wa.height) {
+  if (anchor.v === 'up') {
+    const over = wa.y - (bounds.y + 34);
+    if (over > 0) {
+      panelH = clampPanel(panelH - over);
+      bounds.y = bounds.y + bounds.height - winH();
+      bounds.height = winH();
+    }
+  } else if (bounds.y + winH() > wa.y + wa.height) {
     panelH = clampPanel(wa.y + wa.height - bounds.y - PANEL_MARGIN);
     bounds.height = winH();
   }

@@ -66,11 +66,19 @@ body{position:relative;font-family:'Pretendard Variable',Pretendard,'Malgun Goth
 
 /* ── 접힌 알약 ↔ 펼친 판 ── */
 /* 그림자는 창 테두리에서 잘려 보여서 쓰지 않는다. 바깥은 얇은 선 하나로만 마감 */
-.pill{left:136px;top:14px;width:224px;height:48px;border-radius:999px;box-shadow:0 0 0 1px rgba(0,0,0,.14);transform-origin:top right;transition:opacity .22s ease .12s,transform .45s cubic-bezier(.2,1.4,.4,1) .05s}
+.pill{left:112px;top:14px;width:248px;height:48px;border-radius:999px;box-shadow:0 0 0 1px rgba(0,0,0,.14);transform-origin:top right;transition:opacity .22s ease .12s,transform .45s cubic-bezier(.2,1.4,.4,1) .05s}
 .pill .g-rim{padding:9px}
 body.is-open .pill{opacity:0;transform:scale(1.2);pointer-events:none;transition:opacity .16s ease,transform .3s ease}
 /* 초록불은 늘 알약 세로 가운데. 프로젝트가 있으면 글자를 올리고 그 밑에 얇은 줄 + % */
-.pillBtn{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:6px;padding:0 16px 0 33px;border:0;border-radius:inherit;background:transparent;cursor:pointer}
+.pillBtn{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:6px;padding:0 39px 0 33px;border:0;border-radius:inherit;background:transparent;cursor:pointer}
+/* 맨 위 고정 핀: 초록불이 왼쪽에서 20px이듯 핀도 오른쪽에서 20px (좌우 여백 같게) */
+.pillPin{position:absolute;right:9px;top:50%;z-index:2;width:22px;height:22px;margin-top:-11px;padding:0;border:0;border-radius:999px;display:grid;place-items:center;background:transparent;color:var(--fg3);cursor:pointer;transition:background .2s ease,color .2s ease,box-shadow .2s ease,transform .25s cubic-bezier(.3,1.7,.5,1)}
+.pillPin svg{transform:rotate(35deg);transition:transform .35s cubic-bezier(.3,1.7,.5,1)}
+.pillPin:hover{background:var(--ctl);color:var(--fg)}
+.pillPin:active{transform:scale(.86)}
+.pillPin:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+body.is-ontop .pillPin{background:color-mix(in srgb,var(--accent) 26%,transparent);box-shadow:inset 0 1px 0 var(--hl),inset 0 0 0 1px var(--accent-soft);color:var(--accent)}
+body.is-ontop .pillPin svg{transform:none}
 .pillBtn .breath{position:absolute;left:16px;top:50%;margin-top:-4px}
 .breath{flex:none;width:8px;height:8px;border-radius:50%;background:#9df0c4;box-shadow:0 0 10px rgba(157,240,196,.9);animation:breathe 3.2s ease-in-out infinite}
 @keyframes breathe{0%,100%{opacity:.55;transform:scale(.85)}50%{opacity:1;transform:scale(1.1)}}
@@ -95,8 +103,19 @@ body.is-open .pill{opacity:0;transform:scale(1.2);pointer-events:none;transition
 .trim{text-box:trim-both cap alphabetic}
 
 /* 판 높이는 아래를 끌어서 바꾼다 (--panel-h). 접힐 때는 알약 높이(48px)까지 줄어드는 비율(--panel-sy) */
-.panel{left:20px;top:14px;width:340px;height:var(--panel-h,652px);border-radius:30px;box-shadow:0 0 0 1px rgba(0,0,0,.14);transform-origin:top right;opacity:0;transform:scale(.66,var(--panel-sy,.074));pointer-events:none;transition:opacity .2s ease,transform .38s cubic-bezier(.4,0,.2,1)}
+.panel{left:20px;top:14px;width:340px;height:var(--panel-h,652px);border-radius:30px;box-shadow:0 0 0 1px rgba(0,0,0,.14);transform-origin:top right;opacity:0;transform:scale(.73,var(--panel-sy,.074));pointer-events:none;transition:opacity .2s ease,transform .38s cubic-bezier(.4,0,.2,1)}
+
+/* ── 화면 가장자리 쪽으로 붙기: 왼쪽에 두면 왼쪽으로, 아래쪽에 두면 알약이 아래에 있고 판이 위로 ── */
+body.anchor-left .pill{left:20px;transform-origin:top left}
+body.anchor-left .panel{transform-origin:top left}
+body.anchor-up .pill{top:auto;bottom:14px;transform-origin:bottom right}
+body.anchor-up .panel{top:auto;bottom:14px;transform-origin:bottom right}
+body.anchor-up.anchor-left .pill,body.anchor-up.anchor-left .panel{transform-origin:bottom left}
+body.is-reanchor .pill,body.is-reanchor .panel,body.is-reanchor .notice{opacity:0!important;transition:none!important}
+body.anchor-up #pinBtn .i-up{transform:rotate(180deg)} /* 위로 펼친 판은 아래(알약 쪽)로 접힌다 */
+body.is-moving,body.is-moving *{cursor:grabbing!important}
 .sizeGrip{position:absolute;left:44px;right:44px;bottom:0;height:11px;z-index:3;display:grid;place-items:center;cursor:ns-resize;touch-action:none}
+body.anchor-up .sizeGrip{bottom:auto;top:0}
 .sizeGrip span{width:38px;height:4px;border-radius:999px;background:var(--fg2);opacity:0;transform:scaleX(.7);transition:opacity .2s ease,transform .3s cubic-bezier(.3,1.7,.5,1)}
 .panel:hover .sizeGrip span{opacity:.35}
 .sizeGrip:hover span,body.is-resizing .sizeGrip span{opacity:.85;transform:none}
@@ -106,9 +125,8 @@ body.is-open .panel{opacity:1;transform:none;pointer-events:auto;transition:opac
 body.is-open .content{opacity:1;transition:opacity .3s ease .18s}
 
 /* ── 머리 ── */
-/* 창 옮기기는 "현황판" 글자로만. 알약이 있던 자리는 클릭을 받아야 해서 끌기 영역에서 뺀다 */
+/* 창 옮기기는 widget.js가 한다 (알약·판의 빈 곳을 잡고 끌기). 운영체제 끌기 영역은 쓰지 않는다 */
 .head{flex:none;display:flex;align-items:center;gap:2px;padding:18px 12px 8px 22px}
-.ttl h1{-webkit-app-region:drag}
 #pinBtn .i-up{display:none}
 body.is-pinned #pinBtn .i-pin{display:none}
 body.is-pinned #pinBtn .i-up{display:block}
@@ -357,6 +375,10 @@ body.tab-proj .thumb{transform:translateX(100%)}
 
 /* ── 접힌 알약 밑의 날짜 알림 (유리·색은 위젯과 같은 설정을 따른다) ── */
 .notice{left:80px;top:72px;transform-origin:top right;transition:opacity .25s ease,transform .3s ease}
+body.anchor-left .notice.box{left:20px;transform-origin:top left}
+body.anchor-left .notice.bubble{left:5px;transform-origin:top left}
+body.anchor-up .notice{top:auto;bottom:72px;transform-origin:bottom right}
+body.anchor-up.anchor-left .notice{transform-origin:bottom left}
 .notice.is-in{animation:drop .55s cubic-bezier(.2,1.35,.4,1)}
 @keyframes drop{from{opacity:0;transform:translateY(-14px) scale(.9)}}
 body.is-open .notice{opacity:0;transform:translateY(-8px) scale(.96);pointer-events:none}
@@ -388,5 +410,11 @@ body.is-open .notice{opacity:0;transform:translateY(-8px) scale(.96);pointer-eve
 .schedWhen{font-size:11.5px;font-weight:700;color:var(--c-due)}
 .schedWhat{font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ib.soft{background:var(--ctl)}
+
+/* ── 잘린 글자 전광판: 커서를 올리면 같은 글 두 개를 이어 붙여 왼쪽으로 흘린다 ── */
+.mq-on{text-overflow:clip!important;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 8px,#000 calc(100% - 16px),transparent)}
+.mqRun{display:inline-flex;width:max-content;animation:mq var(--mq-dur,8s) linear .4s infinite}
+.mqRun span{padding-right:48px}
+@keyframes mq{0%,8%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 
 .toast{position:absolute;left:16px;right:16px;bottom:48px;padding:9px 14px;border-radius:16px;background:var(--note-bg);color:var(--note-fg);box-shadow:inset 0 1px 0 var(--hl);font-size:12px;line-height:1.5;text-shadow:none;animation:pop .25s cubic-bezier(.2,1.4,.4,1)}

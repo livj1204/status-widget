@@ -163,12 +163,13 @@
   }
 
   function canAutoClose() {
-    return !pinned && !dragKey && !resizing && $('addBox').hidden && $('tonePop').hidden;
+    return !pinned && !dragKey && !resizing && !moving && $('addBox').hidden && $('tonePop').hidden;
   }
 
-  // ── 판 아래를 끌어서 높이 조절 ──
+  // ── 판 가장자리를 끌어서 높이 조절 (아래로 펼치면 아래 가장자리, 위로 펼치면 위 가장자리) ──
   let panelH = 652;
   let resizing = false;
+  let moving = false; // 위젯을 끌어서 옮기는 중
   function setPanelH(h) {
     panelH = Math.round(h);
     body.style.setProperty('--panel-h', panelH + 'px');
@@ -184,10 +185,11 @@
     setIgnore(false);
     const startY = e.screenY;
     const startH = panelH;
+    const dir = body.classList.contains('anchor-up') ? -1 : 1; // 위로 펼친 판은 위로 끌어야 길어진다
     let lim = { min: 420, max: startH };
     let want = startH;
     const move = ev => {
-      want = startH + ev.screenY - startY;
+      want = startH + dir * (ev.screenY - startY);
       setPanelH(Math.min(Math.max(want, lim.min), lim.max));
     };
     const ready = api.resizeBegin().then(r => {
@@ -227,18 +229,23 @@
   }
 
   document.addEventListener('mousemove', e => {
-    if (resizing) return; // 끄는 동안은 커서가 판 밖으로 나가도 클릭 통과로 바꾸지 않는다
+    if (resizing || moving) return; // 끄는 동안은 커서가 판 밖으로 나가도 클릭 통과로 바꾸지 않는다
     const host = e.target.closest ? e.target.closest('.host') : null;
     const active = open ? $('panel') : $('pill');
     const inside = host === active;
     // 접혀 있을 때 알약 밑 알림 위에서는 클릭을 받되 판은 펼치지 않는다
     const onNotice = !open && !!host && host.classList.contains('notice') && !host.hidden;
+    // 알약의 핀 위에서는 판을 펼치지 않는다 (펼치면 판에 가려 핀을 못 누른다)
+    const onPin = !open && !!e.target.closest && !!e.target.closest('#pillPin');
     hovering = inside;
     setIgnore(!inside && !onNotice);
     if (!inside && !open) suppressHover = false;
     if (inside) {
       clearTimeout(closeTimer);
-      if (!open && !openTimer && !suppressHover) {
+      if (onPin) {
+        clearTimeout(openTimer);
+        openTimer = null;
+      } else if (!open && !openTimer && !suppressHover) {
         openTimer = setTimeout(() => {
           openTimer = null;
           peekAt = Date.now();
@@ -258,6 +265,111 @@
     scheduleClose();
   });
   $('pillBtn').addEventListener('click', () => setPinned(true));
+
+  // ── 맨 위 고정 (알약 오른쪽 핀): 트레이의 "항상 위에 두기"와 같은 설정이고 다음에 켤 때도 기억한다 ──
+  let onTop = false;
+  function setTopUi(on) {
+    onTop = !!on;
+    body.classList.toggle('is-ontop', onTop);
+    const b = $('pillPin');
+    b.setAttribute('aria-pressed', onTop ? 'true' : 'false');
+    b.title = onTop ? '맨 위 고정 켜짐 — 누르면 해제' : '맨 위 고정 — 다른 창보다 늘 위';
+  }
+  $('pillPin').addEventListener('click', async e => {
+    e.stopPropagation();
+    setTopUi(await api.setPinned(!onTop));
+  });
+  api.onPinned(setTopUi);
+
+  const inPill = (x, y) => {
+    const p = $('pill');
+    return x >= p.offsetLeft && x <= p.offsetLeft + p.offsetWidth && y >= p.offsetTop && y <= p.offsetTop + p.offsetHeight;
+  };
+
+  // ── 아무 데나 끌어서 옮기기 ──
+  // 접힌 알약, 또는 펼친 판의 빈 곳(줄·버튼·입력칸이 아닌 곳)을 누른 채 5px 넘게 움직이면 위젯을 옮긴다.
+  // 알약에 커서를 올려 판이 펼쳐진 직후 알약 자리를 끌면, 판을 접고 알약만 따라오게 한다.
+  const NOT_DRAG = 'button, input, textarea, select, a, [role="button"], [role="tab"], .it, .pj, .step, .addBox, .tonePop, .note, .cal, .tabs, .prog, .fold, .sizeGrip, .notice, .toast, .pjHidden';
+  let press = null;
+  let blockClickUntil = 0;
+  let moveFrame = 0;
+  document.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || moving || resizing) return;
+    const t = e.target;
+    let fromPill = false;
+    if (!open && t.closest('#pill') && !t.closest('#pillPin')) {
+      fromPill = true;
+      clearTimeout(openTimer);
+      openTimer = null;
+    } else if (open && !pinned && Date.now() - peekAt < 900 && inPill(e.clientX, e.clientY)) {
+      fromPill = true;
+    } else if (!open || !t.closest('#panel') || t.closest(NOT_DRAG)) {
+      return;
+    }
+    press = { x: e.screenX, y: e.screenY, id: e.pointerId, target: t, fromPill, started: false };
+  }, true);
+  document.addEventListener('pointermove', e => {
+    if (!press) return;
+    if (!press.started) {
+      if (Math.abs(e.screenX - press.x) + Math.abs(e.screenY - press.y) < 5) return;
+      press.started = true;
+      moving = true;
+      body.classList.add('is-moving');
+      try { press.target.setPointerCapture(press.id); } catch (err) {}
+      closeMenu();
+      if (press.fromPill && open) {
+        suppressHover = true;
+        setOpen(false); // 판을 접고 알약만 옮긴다
+      }
+      setIgnore(false);
+      api.dragStart({ x: press.x, y: press.y });
+    }
+    press.last = { x: e.screenX, y: e.screenY };
+    if (!moveFrame) {
+      moveFrame = requestAnimationFrame(() => {
+        moveFrame = 0;
+        if (press && press.last) api.dragMove(press.last);
+      });
+    }
+  }, true);
+  const endPress = async () => {
+    const p = press;
+    press = null;
+    if (!p || !p.started) return;
+    blockClickUntil = Date.now() + 400; // 끌고 놓은 뒤 따라오는 클릭은 무시 (알약 고정 등이 눌리지 않게)
+    if (p.fromPill) suppressHover = true;
+    if (p.last) api.dragMove(p.last); // 마지막 자리까지 옮긴 뒤 붙을 쪽을 정한다
+    const r = await api.dragEnd();
+    moving = false;
+    body.classList.remove('is-moving');
+    if (r) applyAnchor(r);
+  };
+  document.addEventListener('pointerup', endPress, true);
+  document.addEventListener('pointercancel', endPress, true);
+  document.addEventListener('click', e => {
+    if (Date.now() < blockClickUntil) {
+      e.preventDefault();
+      e.stopPropagation();
+      blockClickUntil = 0;
+    }
+  }, true);
+
+  // 화면 가장자리 쪽 붙기를 화면에 반영한다 (자리가 바뀌는 순간은 잠깐 숨겨 튀어 보이지 않게)
+  let anchorKey = 'right down';
+  function applyAnchor(r) {
+    if (!r || !r.anchor) return;
+    const key = r.anchor.h + ' ' + r.anchor.v;
+    const changed = key !== anchorKey;
+    if (changed) body.classList.add('is-reanchor');
+    anchorKey = key;
+    body.classList.toggle('anchor-left', r.anchor.h === 'left');
+    body.classList.toggle('anchor-up', r.anchor.v === 'up');
+    if (r.panelH) setPanelH(r.panelH);
+    if (noticeNow && noticeNow.type === 'ask') layoutBubble();
+    placeWall();
+    if (changed) setTimeout(() => body.classList.remove('is-reanchor'), 120);
+  }
+  api.onAnchor(applyAnchor);
 
   // 알약을 누르려는 사이 커서 때문에 먼저 펼쳐졌어도, 펼친 직후 알약 자리를 누르면 고정으로 본다
   document.addEventListener('click', e => {
@@ -371,6 +483,7 @@
 
   function render(s) {
     current = s;
+    mqStopAll(); // 글을 새로 채우기 전에 흐르던 전광판을 원래 글로 되돌린다
     emptyEl.remove();
     if (!s || !s.ok) {
       for (const el of nodes.values()) el.remove();
@@ -438,6 +551,8 @@
     renderNotices(s);
 
     $('footText').textContent = (s.name || 'STATUS.md') + ' · ' + (note || '저장 ' + hhmm(s.mtime));
+
+    mqRefresh();
 
     if (flashKey) {
       const el = nodes.get(flashKey);
@@ -1103,20 +1218,27 @@
     showNotice(noticeQueue(s)[0] || null);
   }
 
-  // 말풍선 모양: 몸통 280 × h, 오른쪽 위 꼬리가 화면 바깥쪽(오른쪽)을 향한다
-  function bubblePath(w, t, h) {
+  // 말풍선 모양: 몸통 280 × h, 꼬리는 위젯이 붙은 화면 가장자리 쪽(오른쪽·왼쪽)을 향한다.
+  // 기본은 오른쪽 위 꼬리. flipX면 왼쪽, flipY(알약 위에 뜰 때)면 아래 모서리로 뒤집는다
+  function bubblePath(w, t, h, flipX, flipY) {
     const r = 18;
-    return 'M' + r + ' 0 H' + (w + t - 2) + ' Q' + (w + t + 1) + ' 0 ' + (w + t - 1) + ' 2.5 C' + (w + 8) + ' 8 ' + w + ' 14 ' + w + ' 28' +
-      ' V' + (h - r) + ' A' + r + ' ' + r + ' 0 0 1 ' + (w - r) + ' ' + h + ' H' + r + ' A' + r + ' ' + r + ' 0 0 1 0 ' + (h - r) +
-      ' V' + r + ' A' + r + ' ' + r + ' 0 0 1 ' + r + ' 0 Z';
+    const P = (x, y) => (flipX ? w + t - x : x) + ' ' + (flipY ? h - y : y);
+    const sweep = flipX !== flipY ? 0 : 1;
+    const arc = (x, y) => ' A' + r + ' ' + r + ' 0 0 ' + sweep + ' ' + P(x, y);
+    return 'M' + P(r, 0) + ' L' + P(w + t - 2, 0) + ' Q' + P(w + t + 1, 0) + ' ' + P(w + t - 1, 2.5) +
+      ' C' + P(w + 8, 8) + ' ' + P(w, 14) + ' ' + P(w, 28) + ' L' + P(w, h - r) + arc(w - r, h) +
+      ' L' + P(r, h) + arc(0, h - r) + ' L' + P(0, r) + arc(r, 0) + ' Z';
   }
 
   function layoutBubble() {
     const host = $('ask');
     const w = 280;
     const t = 15;
+    const flipX = body.classList.contains('anchor-left');
+    const flipY = body.classList.contains('anchor-up');
+    $('askBody').style.left = (flipX ? t : 0) + 'px';
     const h = Math.max(64, Math.ceil($('askBody').offsetHeight));
-    const d = bubblePath(w, t, h);
+    const d = bubblePath(w, t, h, flipX, flipY);
     host.style.height = h + 'px';
     host.style.setProperty('--bub', "path('" + d + "')");
     const ring = '<svg xmlns="http://www.w3.org/2000/svg" width="' + (w + t) + '" height="' + h + '"><path d="' + d + '" fill="none" stroke="black" stroke-width="16"/></svg>';
@@ -1305,6 +1427,53 @@
   $('kindNotify').addEventListener('click', () => setKind('notify'));
   $('kindAsk').addEventListener('click', () => setKind('ask'));
 
+  // ── 잘린 글자 전광판: 줄에 커서를 올리면 … 으로 잘린 글이 왼쪽으로 천천히 흘러간다 ──
+  const MQ_HOSTS = '.it, .pjHead, #prog, #sched';
+  const MQ_TARGETS = '.st, .pjSub .tx, #progNow, .schedWhat';
+  let mqHost = null;
+  function mqStart(el) {
+    if (el.dataset.mq !== undefined || el.scrollWidth <= el.clientWidth + 1) return;
+    const text = el.textContent;
+    el.dataset.mq = text;
+    el.classList.add('mq-on');
+    const run = document.createElement('span');
+    run.className = 'mqRun';
+    const a = document.createElement('span');
+    a.textContent = text;
+    run.append(a, a.cloneNode(true));
+    el.textContent = '';
+    el.appendChild(run);
+    run.style.setProperty('--mq-dur', Math.max(4, a.offsetWidth / 42).toFixed(1) + 's'); // 1초에 42px쯤
+  }
+  function mqStop(el) {
+    if (el.dataset.mq === undefined) return;
+    const text = el.dataset.mq;
+    delete el.dataset.mq;
+    el.classList.remove('mq-on');
+    el.textContent = text;
+  }
+  function mqStopAll() {
+    for (const el of document.querySelectorAll('[data-mq]')) mqStop(el);
+  }
+  function mqRefresh() {
+    if (mqHost && mqHost.isConnected && mqHost.matches(':hover')) {
+      for (const el of mqHost.querySelectorAll(MQ_TARGETS)) mqStart(el);
+    }
+  }
+  document.addEventListener('mouseover', e => {
+    if (moving || resizing) return;
+    const h = e.target.closest ? e.target.closest(MQ_HOSTS) : null;
+    if (h === mqHost) return;
+    if (mqHost) for (const el of mqHost.querySelectorAll('[data-mq]')) mqStop(el);
+    mqHost = h;
+    if (h) for (const el of h.querySelectorAll(MQ_TARGETS)) mqStart(el);
+  });
+  document.addEventListener('mouseout', e => {
+    if (e.relatedTarget || !mqHost) return;
+    mqStopAll();
+    mqHost = null;
+  });
+
   // ── 시작 ──
   async function load() {
     render(await api.get());
@@ -1339,6 +1508,8 @@
   });
   api.winState().then(st => {
     if (st.panelH) setPanelH(st.panelH);
+    if (st.anchor) applyAnchor({ anchor: st.anchor });
+    setTopUi(st.pinned);
     setStayUi(st.stay);
     if (st.startOpen) setOpen(true);
   });
@@ -1350,7 +1521,7 @@
     open: () => setOpen(true),
     close: () => setOpen(false),
     tab: t => setTab(t, false),
-    state: () => ({ open, pinned, stay, ignoring, menuKey, suppressHover, tab, notice: noticeNow ? noticeNow.id : '' })
+    state: () => ({ open, pinned, onTop, stay, ignoring, menuKey, suppressHover, tab, anchor: anchorKey, panelH, moving, notice: noticeNow ? noticeNow.id : '' })
   };
   load();
 })();

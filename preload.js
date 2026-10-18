@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld('statusApi', {
   setTop: on => ipcRenderer.send('win:top', !!on),
   redraw: () => ipcRenderer.send('win:redraw'),
   resizeBegin: () => ipcRenderer.invoke('win:resize-begin'),
+  dragStart: pt => ipcRenderer.invoke('win:drag-start', pt || null),
+  dragMove: pt => ipcRenderer.send('win:drag-move', pt || null),
+  dragEnd: () => ipcRenderer.invoke('win:drag-end'),
   resizeEnd: h => ipcRenderer.invoke('win:resize-end', Number(h)),
   getWall: () => ipcRenderer.invoke('wall:get'),
   onChanged: cb => ipcRenderer.on('status:changed', (_e, s) => cb(s)),
@@ -21,5 +24,6 @@ contextBridge.exposeInMainWorld('statusApi', {
   onStay: cb => ipcRenderer.on('win:stay', (_e, on) => cb(on)),
   onOpen: cb => ipcRenderer.on('win:open', () => cb()),
   onWall: cb => ipcRenderer.on('wall:update', (_e, w) => cb(w)),
-  onBounds: cb => ipcRenderer.on('win:bounds', (_e, b) => cb(b))
+  onBounds: cb => ipcRenderer.on('win:bounds', (_e, b) => cb(b)),
+  onAnchor: cb => ipcRenderer.on('win:anchor', (_e, a) => cb(a))
 });

@@ -33,7 +33,10 @@ Claude Code와 함께 쓰면 Claude도 같은 파일을 읽고 고치기 때문�
 - 맨 위 프로젝트가 얼마나 됐는지 펼친 판 맨 위와 접힌 알약에 **얇은 줄과 %**로 보입니다.
 - 날짜를 정한 일은 때가 되면 **알약 밑에 알림**이 뜹니다. 일정은 네모 칸으로, "진행해 볼까요?" 같은 질문은 말풍선으로 뜹니다.
 - 다 끝난 프로젝트는 휴지통 버튼으로 **위젯에서만 지울** 수 있습니다. 파일에는 그대로 남습니다.
-- 판 맨 아래를 **잡고 끌면** 판을 길게 늘리거나 줄일 수 있습니다. 바꾼 높이는 다음에 켤 때도 기억합니다.
+- 판 가장자리를 **잡고 끌면** 판을 길게 늘리거나 줄일 수 있습니다. 바꾼 높이는 다음에 켤 때도 기억합니다.
+- 알약이나 판의 빈 곳을 **잡고 끌면** 위젯을 어디로든 옮길 수 있습니다. 화면 왼쪽이나 아래쪽에 두면 판과 알림이 그쪽 가장자리에 붙어서 펼쳐집니다.
+- 알약 오른쪽 **핀**을 누르면 크롬 같은 다른 창보다 늘 위에 떠 있습니다. 다시 누르면 풀립니다.
+- 설명이 길어 **…** 으로 잘린 줄에 커서를 올리면, 글자가 전광판처럼 옆으로 흘러가서 끝까지 읽을 수 있습니다.
 - 완료함에서 **되살리거나 영구 삭제**할 수 있고, 실수했을 때는 **되돌리기** 버튼으로 돌아갑니다.
 - 바꾼 내용은 곧바로 `STATUS.md`에 저장됩니다. 메모장으로 파일을 고쳐도 위젯이 몇 초 안에 따라 바뀝니다.
 
@@ -73,14 +76,16 @@ Windows 10·11에서 쓸 수 있습니다.
 | 단계 끝내기 | 단계 앞 네모를 누릅니다. 지금 하던 단계를 끝내면 다음 단계가 "지금"이 됩니다. |
 | 알약에 띄울 프로젝트 바꾸기 | 카드에 커서를 올리면 나오는 **↥** 버튼으로 맨 위에 올립니다. |
 | 끝난 프로젝트 지우기 | 다 끝난 카드에 커서를 올리면 나오는 **휴지통** 버튼을 누릅니다. 위젯에서만 지워지고, 맨 아래 "지운 프로젝트"에서 다시 보이게 할 수 있습니다. |
-| 판 길이 바꾸기 | 판 맨 아래 가운데를 잡고 위아래로 끕니다. |
+| 판 길이 바꾸기 | 판 가장자리 가운데(아래로 펼치면 아래쪽, 위로 펼치면 위쪽)를 잡고 끕니다. |
 | 알림 닫기 | 네모 알림은 ✓나 ×, 말풍선은 "내일"(내일 다시 알림)이나 × |
-| 위젯 옮기기 | "현황판" 글자를 잡고 끕니다. |
+| 위젯 옮기기 | 알약이나 판의 빈 곳(줄·버튼이 아닌 곳)을 잡고 끕니다. 알약은 놓은 자리에 그대로 있고, 판은 가까운 화면 가장자리 쪽으로 펼쳐집니다. |
+| 다른 창보다 늘 위 | 알약 오른쪽 핀을 누릅니다. 다시 누르면 풀립니다. |
+| 잘린 글 다 읽기 | 줄에 커서를 올리면 잘린 설명이 옆으로 흘러갑니다. |
 | 파일 직접 열기 | 맨 아래 파일 이름을 누릅니다. |
 | 유리 색 바꾸기 | 오른쪽 아래 톱니를 누르고 색을 고릅니다. 무지개 동그라미를 누르면 팔레트나 색 코드(예: `#7ab8e6`)로 직접 정할 수 있습니다. 알림도 같은 색을 따라갑니다. |
 | 끄기 | 체크 모양 아이콘 오른쪽 클릭 → 끝내기 |
 
-체크 모양 아이콘 메뉴에는 항상 위에 두기, 펼친 채로 두기(다음에 켤 때도 유지), 다른 현황판 파일 고르기, 새 현황판 만들기, 위치 처음으로, 다시 그리기도 있습니다.
+체크 모양 아이콘 메뉴에는 항상 위에 두기(알약 핀과 같은 설정), 펼친 채로 두기(다음에 켤 때도 유지), 다른 현황판 파일 고르기, 새 현황판 만들기, 위치 처음으로, 다시 그리기도 있습니다.
 
 ### Claude Code와 같이 쓰기
 
@@ -197,7 +202,10 @@ It's built to work with Claude Code: Claude reads and edits the same file, so wh
 - The top project's progress shows as a **thin line with a percentage** at the top of the board and on the folded pill.
 - Dated items get a **reminder under the pill** when the day comes close: plain reminders in a box, and questions like "Shall we get started?" in a speech bubble.
 - Finished projects can be **removed from the widget** with the trash button. The file keeps them.
-- **Drag the bottom edge** of the board to make it taller or shorter. The height is remembered.
+- **Drag the edge** of the board to make it taller or shorter. The height is remembered.
+- **Drag** the pill or any empty part of the board to move the widget anywhere. Put it on the left or near the bottom of the screen and the board and reminders open toward that edge.
+- The **pin** on the right of the pill keeps the widget above other windows such as Chrome. Click it again to turn that off.
+- Hover over a row whose description is cut off with **…** and the text scrolls by like a ticker so you can read all of it.
 - In Done you can **restore or permanently delete** items, and the **undo** button reverts your last change.
 - Every change is saved to `STATUS.md` right away. If you edit the file in a text editor, the widget catches up within a few seconds.
 
@@ -237,14 +245,16 @@ Updating from an earlier version? Overwrite the files with the new ones and rest
 | Finish a step | Click the box in front of it. Finishing the current step makes the next one current. |
 | Choose the project on the pill | Hover over a card and click **↥** to move it to the top. |
 | Remove a finished project | Hover over a finished card and click the **trash** button. It only disappears from the widget; bring it back under "지운 프로젝트" (Removed projects) at the bottom. |
-| Change the board's height | Drag the middle of the board's bottom edge up or down. |
+| Change the board's height | Drag the middle of the board's edge (the bottom edge when it opens downward, the top edge when it opens upward). |
 | Dismiss a reminder | Box: ✓ or ×. Bubble: 내일 (remind me tomorrow) or ×. |
-| Move the widget | Drag the "현황판" title. |
+| Move the widget | Drag the pill or any empty part of the board (not a row or button). The pill stays where you drop it, and the board opens toward the nearest screen edge. |
+| Keep it above other windows | Click the pin on the right of the pill. Click again to turn it off. |
+| Read a cut-off description | Hover over the row; the description scrolls by. |
 | Open the file | Click the file name at the bottom. |
 | Change the glass color | Click the gear at the bottom right and pick a color. The rainbow circle lets you set your own with a palette or a color code (e.g. `#7ab8e6`). Reminders follow the same color. |
 | Quit | Right-click the tray icon → 끝내기 (Quit) |
 
-The tray menu also has 항상 위에 두기 (Always on top), 펼친 채로 두기 (Keep open, remembered across restarts), 다른 현황판 파일 고르기 (Choose another board file), 새 현황판 만들기 (New board), 위치 처음으로 (Reset position), and 다시 그리기 (Redraw).
+The tray menu also has 항상 위에 두기 (Always on top, same as the pill's pin), 펼친 채로 두기 (Keep open, remembered across restarts), 다른 현황판 파일 고르기 (Choose another board file), 새 현황판 만들기 (New board), 위치 처음으로 (Reset position), and 다시 그리기 (Redraw).
 
 ### Using it with Claude Code
 
