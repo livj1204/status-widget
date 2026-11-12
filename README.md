@@ -2,13 +2,13 @@
 
 **[한국어](#한국어) · [English](#english)**
 
-![접힌 알약과 날짜 알림, 할 일 탭, 프로젝트 탭 / The folded pill with a date reminder, the To-do tab, and the Projects tab](docs/screenshot.png)
+![세션 클로드가 선 접힌 알약과 날짜 알림, 할 일 탭, 세션이 붙은 프로젝트 탭 / The folded pill with session Clawds and a date reminder, the To-do tab, and the Projects tab with sessions](docs/screenshot.png)
 
 ## 한국어
 
 할 일 목록(`STATUS.md` 파일 하나)을 바탕화면 오른쪽 위에 Liquid Glass 느낌의 위젯으로 띄워 두는 Windows용 프로그램입니다. 평소에는 작은 알약 모양으로 접혀 있다가, 커서를 올리면 펼쳐집니다.
 
-Claude Code와 함께 쓰면 Claude도 같은 파일을 읽고 고치기 때문에, Claude가 맡은 일과 직접 할 일이 한 목록에 모입니다. Claude가 여러 단계로 하는 일은 프로젝트 탭에 단계와 진행도로 보여서, 앱을 열지 않아도 어디까지 왔는지 알 수 있습니다. Claude 없이 평범한 할 일 위젯으로 써도 괜찮습니다.
+Claude Code와 함께 쓰면 Claude도 같은 파일을 읽고 고치기 때문에, Claude가 맡은 일과 직접 할 일이 한 목록에 모입니다. Claude가 여러 단계로 하는 일은 프로젝트 탭에 단계와 진행도로 보여서, 앱을 열지 않아도 어디까지 왔는지 알 수 있습니다. 켜 둔 Claude 세션은 움직이는 픽셀 클로드로 그 일의 카드 위에 서 있어서, 어느 세션이 일하는 중이고 어느 세션이 대답을 기다리는지 한눈에 보입니다. Claude 없이 평범한 할 일 위젯으로 써도 괜찮습니다.
 
 **목차**
 - [할 수 있는 것](#할-수-있는-것)
@@ -31,6 +31,9 @@ Claude Code와 함께 쓰면 Claude도 같은 파일을 읽고 고치기 때문�
 - **+ 버튼**으로 새 일을 넣습니다. 종류를 고르고 Enter를 누르면 됩니다. **달력**으로 날짜도 정할 수 있습니다.
 - 단계가 여러 개인 일은 **프로젝트 탭**에 단계 목록으로 보입니다. 지금 하는 단계와 다음 단계가 표시되고, 끝난 단계는 체크합니다.
 - 맨 위 프로젝트가 얼마나 됐는지 펼친 판 맨 위와 접힌 알약에 **얇은 줄과 %**로 보입니다.
+- Claude Code 세션이 켜져 있으면 세션마다 **움직이는 픽셀 클로드**가 생깁니다. 일하는 중 · 생각하는 중 · 대답을 기다리는 중 · 내 차례 · 자는 중이 움직임으로 구분되고, 대화가 길어져 컨텍스트가 많이 차면 땀을 흘립니다.
+- 클로드는 그 세션이 하는 **프로젝트 카드 위에** 서 있습니다. 카드를 펼치면 세션마다 하는 일과 컨텍스트 양이 보이고, 클로드를 누르면 그 세션이 Claude 앱에서 열립니다. 어느 프로젝트에도 안 묶인 세션은 맨 아래 **「그 밖의 세션」**에 모입니다.
+- 접힌 알약 위에도 클로드들이 서 있습니다. 알약의 점 자리에 한 마리만 두거나 끌 수도 있습니다.
 - 날짜를 정한 일은 때가 되면 **알약 밑에 알림**이 뜹니다. 일정은 네모 칸으로, "진행해 볼까요?" 같은 질문은 말풍선으로 뜹니다.
 - 다 끝난 프로젝트는 휴지통 버튼으로 **위젯에서만 지울** 수 있습니다. 파일에는 그대로 남습니다.
 - 판 가장자리를 **잡고 끌면** 판을 길게 늘리거나 줄일 수 있습니다. 바꾼 높이는 다음에 켤 때도 기억합니다.
@@ -72,7 +75,9 @@ Windows 10·11에서 쓸 수 있습니다.
 | 보류 | ⋯ → 보류, 또는 줄을 "보류" 위에 놓습니다. |
 | 새 일 넣기 | + 버튼 → 내용을 쓰고 Enter |
 | 날짜 넣기 | + 버튼 → 오른쪽의 달력 버튼 → 날짜를 고른 뒤 **종**(알림만) 또는 **말풍선**(물어보기)을 고릅니다. |
-| 프로젝트 보기 | 위쪽 탭에서 프로젝트를 누릅니다. 탭은 프로젝트가 하나라도 있을 때만 보입니다. 카드를 누르면 단계가 펼쳐집니다. |
+| 프로젝트 보기 | 위쪽 탭에서 프로젝트를 누릅니다. 탭은 프로젝트나 켜진 Claude 세션이 하나라도 있을 때만 보입니다. 카드를 누르면 단계와 그 일을 하는 세션이 펼쳐집니다. |
+| 세션 열기 | 클로드(또는 펼친 카드 속 세션 칸)를 누릅니다. 클로드에 커서를 올리면 세션 이름이 뜹니다. 터미널에서 켠 세션은 열 수 없습니다. |
+| 알약 클로드 · 땀 기준 | 톱니 → 색 창 아래에서 알약 클로드 자리(위 · 점 · 끔)와 땀을 흘리기 시작하는 컨텍스트 양(20만 · 30만 · 50만)을 고릅니다. |
 | 단계 끝내기 | 단계 앞 네모를 누릅니다. 지금 하던 단계를 끝내면 다음 단계가 "지금"이 됩니다. |
 | 알약에 띄울 프로젝트 바꾸기 | 카드에 커서를 올리면 나오는 **↥** 버튼으로 맨 위에 올립니다. |
 | 끝난 프로젝트 지우기 | 다 끝난 카드에 커서를 올리면 나오는 **휴지통** 버튼을 누릅니다. 위젯에서만 지워지고, 맨 아래 "지운 프로젝트"에서 다시 보이게 할 수 있습니다. |
@@ -82,7 +87,7 @@ Windows 10·11에서 쓸 수 있습니다.
 | 다른 창보다 늘 위 | 알약 오른쪽 핀을 누릅니다. 다시 누르면 풀립니다. |
 | 잘린 글 다 읽기 | 줄에 커서를 올리면 잘린 설명이 옆으로 흘러갑니다. |
 | 파일 직접 열기 | 맨 아래 파일 이름을 누릅니다. |
-| 유리 색 바꾸기 | 오른쪽 아래 톱니를 누르고 색을 고릅니다. 무지개 동그라미를 누르면 팔레트나 색 코드(예: `#7ab8e6`)로 직접 정할 수 있습니다. 알림도 같은 색을 따라갑니다. |
+| 색 바꾸기 | 오른쪽 아래 톱니를 누르고 색을 고릅니다. 위의 **유리 / 단색**으로 뒤가 비치게 할지 정합니다. **+** 를 누르면 팔레트나 색 코드(예: `#7ab8e6`)로 내 색을 더할 수 있고, 고를 때마다 한 칸씩 늘어납니다(커서를 올리면 ×로 지우기). 알림도 같은 색을 따라갑니다. |
 | 끄기 | 체크 모양 아이콘 오른쪽 클릭 → 끝내기 |
 
 체크 모양 아이콘 메뉴에는 항상 위에 두기(알약 핀과 같은 설정), 펼친 채로 두기(다음에 켤 때도 유지), 다른 현황판 파일 고르기, 새 현황판 만들기, 위치 처음으로, 다시 그리기도 있습니다.
@@ -101,11 +106,14 @@ Claude가 매번 이 파일을 보고 고치게 하려면, `~/.claude/CLAUDE.md`
 - 단계가 셋 이상인 일은 `## 프로젝트`에 단계 목록(`[x]` 끝남, `[>]` 지금, `[ ]` 남음)을 만든다. 단계를 시작하거나 끝낼 때마다 그 자리에서 바로 고치고, 지금 하는 프로젝트를 맨 위에 둔다.
 - 설명 끝에 `M/D 추가`가 붙은 줄은 내가 위젯에 직접 적어 둔 메모다. 참고로만 보고 먼저 실행하지 않는다.
 - 그 줄이 `물어보기`이고 날짜가 사흘 안으로 들어왔으면, 대화 중에 하던 답이 끝날 때 한 번 묻고 줄 끝에 `· M/D 물어봄`을 붙인다. `알림만`이면 묻지 않는다.
+- 프로젝트를 맡으면 그 프로젝트 줄 `←` 앞(없으면 줄 끝)에 `· 세션 1a2b3c4d`처럼 자기 세션 번호 앞 8자리를 붙인다. 번호는 scratchpad 경로에서 `scratchpad` 바로 앞 폴더 이름의 앞 8자리다. 다른 세션에서 이어받으면 그 번호를 자기 번호로 바꾼다.
 
 @~/.claude/STATUS.md
 ```
 
 마지막 줄의 `@~/.claude/STATUS.md`는 Claude Code가 새 세션을 열 때마다 현황판 내용을 함께 읽게 해 줍니다. 그래서 세션이 바뀌어도 Claude가 같은 목록을 알고 이어서 고칩니다.
+
+켜진 세션은 Claude Code가 `~/.claude/sessions` 폴더에 남기는 기록으로 알아냅니다. 위젯은 이 기록을 읽기만 합니다. 프로젝트 줄의 `· 세션 …` 표시를 보고 클로드를 어느 카드 위에 세울지 정하고, 번호는 화면에 보여 주지 않습니다. 클로드를 눌러 세션을 여는 것은 Claude 데스크톱 앱에서 켠 세션만 됩니다.
 
 말풍선 알림의 **"Claude에서 열기"** 를 누르면 Claude 데스크톱 앱의 Code 탭에 새 대화가 열리고, "현황판에 넣어 둔 ○○ 진행해 보자" 같은 문장이 입력칸에 미리 들어가 있습니다. 보내기는 직접 누릅니다. Claude 데스크톱 앱이 깔려 있어야 하고, 앱이 작업 폴더(현황판 파일이 있는 폴더)를 써도 되는지 확인을 물을 수 있습니다.
 
@@ -141,6 +149,7 @@ Claude가 매번 이 파일을 보고 고치게 하려면, `~/.claude/CLAUDE.md`
 - `[마감]` 줄은 처음 나오는 날짜(월/일)로 D-day를 셉니다.
 - 프로젝트 줄 밑에 두 칸 들여 쓴 줄이 단계입니다. `[x]`는 끝남, `[>]`는 지금 하는 단계, `[ ]`는 남은 단계입니다.
 - 위젯의 +로 넣은 줄에는 `1/1 추가`처럼 넣은 날이 붙고, 날짜를 고르면 `· 날짜 12/24 · 알림만`(또는 `물어보기`)도 붙습니다.
+- 프로젝트 줄의 `· 세션 1a2b3c4d`는 그 일을 하는 Claude 세션 표시입니다. 여러 개 붙여도 되고, 위젯 화면에는 보이지 않습니다.
 - 자세한 규칙은 [`STATUS.example.md`](STATUS.example.md) 맨 위에 있습니다.
 
 ### 알아 두면 좋은 점
@@ -156,9 +165,11 @@ Claude가 매번 이 파일을 보고 고치게 하려면, `~/.claude/CLAUDE.md`
 
 | 파일 | 하는 일 |
 |---|---|
-| `main.js` | 창, 트레이 메뉴, 파일 읽고 쓰기, 바탕화면 그림, Claude 앱 열기 |
+| `main.js` | 창, 트레이 메뉴, 파일 읽고 쓰기, 바탕화면 그림, Claude 앱 · 세션 열기 |
 | `status.js` | `STATUS.md` 읽기·쓰기와 각 동작(체크, 옮기기, 완료, 단계 체크 등) |
-| `index.html` · `widget.css` · `widget.js` | 위젯 화면 (탭, 프로젝트 카드, 달력, 알림 포함) |
+| `sessions.js` | 켜진 Claude 세션 읽기 (상태, 컨텍스트 양, 돕는 에이전트 수) |
+| `clawd.js` | 픽셀 클로드 그리기 |
+| `index.html` · `widget.css` · `widget.js` | 위젯 화면 (탭, 프로젝트 카드, 세션 클로드, 달력, 알림 포함) |
 | `preload.js` | 화면과 `main.js` 사이 연결 |
 
 `npm start`로도 켤 수 있습니다. 이때는 검은 창이 같이 뜹니다.
@@ -175,7 +186,7 @@ Claude가 매번 이 파일을 보고 고치게 하려면, `~/.claude/CLAUDE.md`
 
 A small Windows widget that pins your to-do list — a single `STATUS.md` file — to the top-right corner of your desktop with a Liquid Glass look. It stays folded into a small pill and opens when you hover over it.
 
-It's built to work with Claude Code: Claude reads and edits the same file, so what Claude is working on and what you need to do end up in one list. Multi-step work shows up in a Projects tab with its steps and progress, so you can see how far along it is without opening the app. It also works fine as a plain to-do widget without Claude.
+It's built to work with Claude Code: Claude reads and edits the same file, so what Claude is working on and what you need to do end up in one list. Multi-step work shows up in a Projects tab with its steps and progress, so you can see how far along it is without opening the app. Each running Claude session appears as an animated pixel Clawd standing on the card of the work it's doing, so you can tell at a glance which session is busy and which one is waiting for you. It also works fine as a plain to-do widget without Claude.
 
 > The widget's interface is in Korean. The tables below explain every button.
 
@@ -200,6 +211,9 @@ It's built to work with Claude Code: Claude reads and edits the same file, so wh
 - The **+ button** adds an item: pick a category and press Enter. A **calendar** lets you give it a date.
 - Multi-step work appears in the **Projects tab** as a list of steps. The current and next steps are marked, and you tick steps off as they're done.
 - The top project's progress shows as a **thin line with a percentage** at the top of the board and on the folded pill.
+- Every running Claude Code session gets an **animated pixel Clawd**. Its motion shows whether it's working, thinking, waiting for your answer, done (your turn), or asleep, and it starts to sweat when the conversation's context fills up.
+- Clawds stand **on top of the project card** their session is working on. Open the card to see what each session is doing and how full its context is; click a Clawd to open that session in the Claude app. Sessions not tied to any project gather at the bottom under **「그 밖의 세션」 (Other sessions)**.
+- Clawds also stand on the folded pill. You can show just one in place of the pill's dot, or turn them off.
 - Dated items get a **reminder under the pill** when the day comes close: plain reminders in a box, and questions like "Shall we get started?" in a speech bubble.
 - Finished projects can be **removed from the widget** with the trash button. The file keeps them.
 - **Drag the edge** of the board to make it taller or shorter. The height is remembered.
@@ -241,7 +255,9 @@ Updating from an earlier version? Overwrite the files with the new ones and rest
 | Put on hold | ⋯ → 보류 (Hold), or drop the row on "보류". |
 | Add an item | + button → type → Enter |
 | Add a date | + button → the calendar button on the right → pick a day, then choose the **bell** (알림만, reminder only) or the **speech bubble** (물어보기, ask me). |
-| See projects | Click 프로젝트 (Projects) in the tabs at the top. The tabs only appear once there's at least one project. Click a card to expand its steps. |
+| See projects | Click 프로젝트 (Projects) in the tabs at the top. The tabs only appear once there's at least one project or running Claude session. Click a card to expand its steps and the sessions working on it. |
+| Open a session | Click a Clawd (or a session card inside an opened project). Hover over a Clawd to see the session's name. Sessions started in a terminal can't be opened this way. |
+| Pill Clawds · sweat level | Gear → below the color choices, pick where the pill's Clawds go (위 on top · 점 in the dot · 끔 off) and the context size at which they start to sweat (20만 = 200k · 30만 = 300k · 50만 = 500k). |
 | Finish a step | Click the box in front of it. Finishing the current step makes the next one current. |
 | Choose the project on the pill | Hover over a card and click **↥** to move it to the top. |
 | Remove a finished project | Hover over a finished card and click the **trash** button. It only disappears from the widget; bring it back under "지운 프로젝트" (Removed projects) at the bottom. |
@@ -251,7 +267,7 @@ Updating from an earlier version? Overwrite the files with the new ones and rest
 | Keep it above other windows | Click the pin on the right of the pill. Click again to turn it off. |
 | Read a cut-off description | Hover over the row; the description scrolls by. |
 | Open the file | Click the file name at the bottom. |
-| Change the glass color | Click the gear at the bottom right and pick a color. The rainbow circle lets you set your own with a palette or a color code (e.g. `#7ab8e6`). Reminders follow the same color. |
+| Change the color | Click the gear at the bottom right and pick a color. **Glass / Solid** at the top sets whether the background shows through. **+** adds your own color from a palette or a color code (e.g. `#7ab8e6`); every pick adds a new swatch (hover one and click × to remove it). Reminders follow the same color. |
 | Quit | Right-click the tray icon → 끝내기 (Quit) |
 
 The tray menu also has 항상 위에 두기 (Always on top, same as the pill's pin), 펼친 채로 두기 (Keep open, remembered across restarts), 다른 현황판 파일 고르기 (Choose another board file), 새 현황판 만들기 (New board), 위치 처음으로 (Reset position), and 다시 그리기 (Redraw).
@@ -270,12 +286,15 @@ To have Claude read and update it in every session, paste this into `~/.claude/C
 - For work with three or more steps, add a step list under `## 프로젝트` (`[x]` done, `[>]` current, `[ ]` to do). Update it right away whenever you start or finish a step, and keep the project you're working on at the top.
 - Lines ending in `M/D 추가` are notes I added myself in the widget. Treat them as reference only; don't act on them unprompted.
 - If such a line says `물어보기` and its date is within three days, ask me about it once, at the end of a reply during our conversation, then append `· M/D 물어봄`. Don't ask about `알림만` lines.
+- When you take on a project, add your session number before the `←` on its line (or at the end) like `· 세션 1a2b3c4d` — the first 8 characters of the folder name right before `scratchpad` in your scratchpad path. If you pick up a project from another session, replace its number with yours.
 - Keep the Korean section names, tags, and markers — the widget only recognizes those.
 
 @~/.claude/STATUS.md
 ```
 
 The last line, `@~/.claude/STATUS.md`, makes Claude Code load the board at the start of every session, so Claude knows the same list and keeps it up to date across sessions.
+
+The widget finds running sessions from the records Claude Code keeps in `~/.claude/sessions` (it only reads them). The `· 세션 …` marker on a project line tells it which card a Clawd stands on; the number itself isn't shown. Opening a session by clicking its Clawd works for sessions started in the Claude desktop app.
 
 Clicking **"Claude에서 열기"** (Open in Claude) on a bubble reminder opens a new conversation in the Code tab of the Claude desktop app, with a sentence like "Let's get started on … from the board" already in the input box. You press send yourself. This needs the Claude desktop app, which may ask you to confirm the working folder (the folder your board file is in).
 
@@ -311,6 +330,7 @@ Projects work the same when you write them in the file yourself. If you don't ne
 - `[마감]` lines count down to the first date (month/day) they contain.
 - Lines indented by two spaces under a project are its steps: `[x]` done, `[>]` current, `[ ]` to do.
 - Items added with the widget's + get the day they were added (`1/1 추가`), plus `· 날짜 12/24 · 알림만` (or `물어보기`) if you picked a date.
+- `· 세션 1a2b3c4d` on a project line marks a Claude session working on it. You can add several; the widget doesn't show them as text.
 - Section names, tags, and markers must stay in Korean; the widget doesn't recognize English ones.
 - The full rules are at the top of [`STATUS.example.md`](STATUS.example.md) (in Korean).
 
@@ -327,9 +347,11 @@ Projects work the same when you write them in the file yourself. If you don't ne
 
 | File | What it does |
 |---|---|
-| `main.js` | Window, tray menu, reading and writing the file, desktop wallpaper, opening the Claude app |
+| `main.js` | Window, tray menu, reading and writing the file, desktop wallpaper, opening the Claude app and sessions |
 | `status.js` | Parsing and writing `STATUS.md`, and every action (check, move, complete, tick a step, …) |
-| `index.html` · `widget.css` · `widget.js` | The widget's interface (tabs, project cards, calendar, and reminders included) |
+| `sessions.js` | Reading running Claude sessions (state, context size, helper agents) |
+| `clawd.js` | Drawing the pixel Clawds |
+| `index.html` · `widget.css` · `widget.js` | The widget's interface (tabs, project cards, session Clawds, calendar, and reminders included) |
 | `preload.js` | The bridge between the interface and `main.js` |
 
 You can also start it with `npm start` (a console window opens alongside it).

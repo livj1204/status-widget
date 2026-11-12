@@ -26,7 +26,10 @@
   let pinned = false; // 이번에만 고정 (알약 클릭). 영구 고정(stay)은 트레이 메뉴
   let suppressHover = false; // ˄로 접은 직후 알약 위에 커서가 있어도 바로 다시 펼치지 않게
   let peekAt = 0;
-  let tab = 'todo'; // 할 일 | 프로젝트
+  let tab = 'todo'; // 할 일 | 프로젝트 | 세션
+  let sessList = []; // 켜진 Claude 세션 (main이 보내 준다)
+  // 알약 클로드: top 위에 서 있기 · dot 점 자리 · off 안 보이기. 창 자리가 이 값에 달려 있어서 main이 주소에 담아 준다
+  let crewMode = new URLSearchParams(location.search).get('crew') || 'top';
   const projOpen = new Map(); // 프로젝트 이름 → 펼쳤는지
   const projDoneOpen = new Map(); // 프로젝트 이름 → 끝난 단계 보이는지
   let addDate = null; // 추가할 때 고른 날짜 (Date)
@@ -120,8 +123,9 @@
     const layer = wallInfo.layer;
     for (const host of document.querySelectorAll('.host')) {
       const wp = host.querySelector('.wp');
-      wp.style.left = (layer.x - winBounds.x - host.offsetLeft) + 'px';
-      wp.style.top = (layer.y - winBounds.y - host.offsetTop) + 'px';
+      const box = wp.parentElement === host ? null : wp.parentElement; // .wpIn(1px 안쪽 틀) · .wpClip
+      wp.style.left = (layer.x - winBounds.x - host.offsetLeft - (box ? box.offsetLeft : 0)) + 'px';
+      wp.style.top = (layer.y - winBounds.y - host.offsetTop - (box ? box.offsetTop : 0)) + 'px';
       wp.style.width = layer.w + 'px';
       wp.style.height = layer.h + 'px';
     }
@@ -156,6 +160,16 @@
       mqStopAll(); // 접히면 흐르던 전광판도 멈추고 잊는다
       mqHost = null;
     }
+    clawdGroups();
+  }
+
+  // 보이는 클로드만 움직인다: 판 안(세션 탭 카드·탭 아이콘)은 펼쳤을 때, 알약 쪽은 접혔을 때
+  function clawdGroups() {
+    if (!window.Clawd) return;
+    Clawd.show('card', open && tab === 'proj');
+    Clawd.show('tab', open);
+    Clawd.show('crew', !open && crewMode === 'top');
+    Clawd.show('dot', !open && crewMode === 'dot');
   }
 
   function setIgnore(on) {
@@ -240,8 +254,10 @@
     const onNotice = !open && !!host && host.classList.contains('notice') && !host.hidden;
     // 알약의 핀 위에서는 판을 펼치지 않는다 (펼치면 판에 가려 핀을 못 누른다)
     const onPin = !open && !!e.target.closest && !!e.target.closest('#pillPin');
+    // 알약 위에 선 클로드는 누를 수 있게만 하고 판은 펼치지 않는다
+    const onCrew = !open && !!e.target.closest && !!e.target.closest('#crew button');
     hovering = inside;
-    setIgnore(!inside && !onNotice);
+    setIgnore(!inside && !onNotice && !onCrew);
     if (!inside && !open) suppressHover = false;
     if (inside) {
       clearTimeout(closeTimer);
@@ -618,18 +634,39 @@
     return { steps, done, total: steps.length, nowIdx, nextIdx, pct };
   }
 
+  // 탭은 할 일 | 프로젝트 둘 (1.6.0부터 세션은 프로젝트 탭 안에. 예전 'sess'는 프로젝트로)
   function setTab(t, save) {
-    tab = t === 'proj' ? 'proj' : 'todo';
+    tab = t === 'proj' || t === 'sess' ? 'proj' : 'todo';
     const proj = tab === 'proj';
     body.classList.toggle('tab-proj', proj);
-    $('tabTodo').classList.toggle('is-on', !proj);
-    $('tabProj').classList.toggle('is-on', proj);
-    $('tabTodo').setAttribute('aria-selected', proj ? 'false' : 'true');
-    $('tabProj').setAttribute('aria-selected', proj ? 'true' : 'false');
+    for (const [id, on] of [['tabTodo', !proj], ['tabProj', proj]]) {
+      $(id).classList.toggle('is-on', on);
+      $(id).setAttribute('aria-selected', on ? 'true' : 'false');
+    }
     $('todoPane').hidden = proj;
     $('projPane').hidden = !proj;
     if (proj) closeMenu();
+    placeThumb();
+    clawdGroups();
     if (save) store.set('tab', tab);
+  }
+
+  // 고른 탭 밑 흰 알약: 보이는 탭 수(2~3개)에 맞춰 폭과 자리를 정한다
+  function placeThumb() {
+    const tabs = [...document.querySelectorAll('#tabs .tab')].filter(b => !b.hidden);
+    const i = Math.max(0, tabs.findIndex(b => b.classList.contains('is-on')));
+    const th = document.querySelector('#tabs .thumb');
+    th.style.width = 'calc((100% - 6px) / ' + Math.max(1, tabs.length) + ')';
+    th.style.transform = 'translateX(' + i * 100 + '%)';
+  }
+
+  // 탭 줄은 프로젝트나 켜진 세션이 있을 때만. 보던 탭이 없어지면 할 일로
+  function updateTabs() {
+    const hasProj = !!(current && current.ok && (current.proj || []).length) || sessList.length > 0;
+    $('tabProj').hidden = !hasProj;
+    $('tabs').hidden = !hasProj;
+    if (!hasProj && tab === 'proj') setTab('todo');
+    else placeThumb();
   }
 
   const LIFT = '<path d="M6 4.5h12"/><path d="M12 20V9"/><path d="M7.5 13.5L12 9l4.5 4.5"/>';
@@ -737,6 +774,7 @@
     const doneOpen = !!projDoneOpen.get(v.title);
     el.dataset.key = v.key;
     el.dataset.name = v.title;
+    el.dataset.sess = (v.sess || []).join(' '); // 이 일을 하는 세션 번호 앞 8자리 (프로젝트 줄의 "· 세션 …")
     el.classList.toggle('is-open', isOpen);
     el.querySelector('.pjHead').setAttribute('aria-expanded', isOpen ? 'true' : 'false');
     el.querySelector('.pjT').textContent = v.title;
@@ -825,8 +863,7 @@
     const projs = all.filter(v => !isHidden(v));
     const hid = all.filter(isHidden);
     const has = all.length > 0;
-    $('tabs').hidden = !has;
-    if (!has && tab === 'proj') setTab('todo');
+    updateTabs();
     $('tabTodoCount').textContent = String(s.todo.filter(v => !v.done).length);
     $('tabProjCount').textContent = String(projs.length);
     const live = new Set();
@@ -845,6 +882,7 @@
     });
     for (const [k, el] of pjNodes) {
       if (!live.has(k)) {
+        dropCardSess(el);
         el.remove();
         pjNodes.delete(k);
       }
@@ -876,6 +914,7 @@
     } else {
       hidFold.remove();
     }
+    placeSessions();
     // 맨 위 줄과 알약: 끝나지 않은 맨 위 프로젝트
     const top = projs.find(v => !v.done && (v.steps || []).length);
     $('prog').hidden = !top;
@@ -1036,28 +1075,15 @@
   });
   $('file').addEventListener('click', () => api.openFile());
 
-  // ── 유리 색 (오른쪽 아래 톱니) ──
+  // ── 색 (오른쪽 아래 톱니): 유리 | 단색 · 기본 색 4개 · 내 색 여러 개 ──
   const TONES = ['smoke', 'milk', 'ice', 'lavender'];
-  const CUSTOM_VARS = ['--tint', '--rim-tint', '--bright', '--rim-bright'];
+  const CUSTOM_VARS = ['--tint', '--rim-tint', '--bright', '--rim-bright', '--solid'];
+  const MAX_CUSTOM = 12;
+  const XMARK = '<path d="M6 6l12 12"/><path d="M18 6L6 18"/>';
   const store = {
     get: k => { try { return localStorage.getItem('status-widget-' + k); } catch (e) { return null; } },
     set: (k, v) => { try { localStorage.setItem('status-widget-' + k, v); } catch (e) {} }
   };
-
-  function markTone(t) {
-    for (const sw of document.querySelectorAll('#tonePop .sw')) {
-      sw.setAttribute('aria-checked', sw.dataset.tone === t ? 'true' : 'false');
-    }
-  }
-
-  function setTone(tone, save) {
-    const t = TONES.includes(tone) ? tone : 'smoke';
-    for (const v of CUSTOM_VARS) body.style.removeProperty(v);
-    body.dataset.tone = t;
-    markTone(t);
-    $('customRow').hidden = true;
-    if (save) store.set('tone', t);
-  }
 
   function parseHex(text) {
     let h = String(text || '').trim().replace(/^#/, '');
@@ -1066,51 +1092,144 @@
     return { hex: '#' + h.toLowerCase(), r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
   }
 
-  // 직접 고른 색: 밝은 색이면 진한 글자(밀크 계열), 어두운 색이면 흰 글자(스모크 계열)
+  // 내 색 목록. 1.3.x까지는 하나만 저장했다(status-widget-custom)
+  const oldCustom = parseHex(store.get('custom'));
+  let customs = [];
+  try { customs = JSON.parse(store.get('customs') || '[]').map(h => parseHex(h)).filter(Boolean).map(c => c.hex); } catch (e) { customs = []; }
+  if (!customs.length && oldCustom) customs = [oldCustom.hex];
+  const saveCustoms = () => store.set('customs', JSON.stringify(customs));
+  let toneNow = 'smoke'; // 기본 색 이름 또는 #rrggbb
+
+  function markTone() {
+    for (const sw of document.querySelectorAll('#tonePop .sw[role="radio"]')) {
+      sw.setAttribute('aria-checked', (sw.dataset.tone || sw.dataset.hex) === toneNow ? 'true' : 'false');
+    }
+  }
+
+  function setTone(tone, save) {
+    const t = TONES.includes(tone) ? tone : 'smoke';
+    for (const v of CUSTOM_VARS) body.style.removeProperty(v);
+    body.dataset.tone = t;
+    toneNow = t;
+    markTone();
+    if (save) store.set('tone', t);
+  }
+
+  // 내 색 입히기: 밝은 색이면 진한 글자(밀크 계열), 어두운 색이면 흰 글자(스모크 계열)
   function setCustom(text, save) {
     const c = parseHex(text);
     if (!c) return false;
     const light = (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) / 255 > 0.58;
     body.dataset.tone = light ? 'custom-light' : 'custom-dark';
-    body.style.setProperty('--tint', 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + (light ? 0.6 : 0.52) + ')');
+    body.style.setProperty('--tint', 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + (light ? 0.76 : 0.56) + ')');
     body.style.setProperty('--rim-tint', 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',.3)');
-    body.style.setProperty('--bright', light ? '1.22' : '.75');
-    body.style.setProperty('--rim-bright', light ? '1.15' : '.85');
-    $('swCustom').style.background = c.hex;
+    body.style.setProperty('--bright', light ? '1.45' : '.72');
+    body.style.setProperty('--rim-bright', light ? '1.35' : '.85');
+    body.style.setProperty('--solid', c.hex);
     $('colorIn').value = c.hex;
-    $('hexIn').value = c.hex;
-    $('hexIn').classList.remove('is-bad');
-    markTone('custom');
-    if (save) {
-      store.set('tone', 'custom');
-      store.set('custom', c.hex);
-    }
+    toneNow = c.hex;
+    markTone();
+    if (save) store.set('tone', c.hex);
     return true;
+  }
+
+  function applySaved() {
+    const t = store.get('tone') || 'smoke';
+    if (parseHex(t) && t.startsWith('#')) setCustom(t, false);
+    else if (t === 'custom' && oldCustom) setCustom(oldCustom.hex, false);
+    else setTone(t, false);
+  }
+
+  function renderCustoms(fresh) {
+    const row = $('myRow');
+    for (const el of row.querySelectorAll('.swWrap')) el.remove();
+    for (const hex of customs) {
+      const wrap = document.createElement('span');
+      wrap.className = 'swWrap' + (hex === fresh ? ' is-new' : '');
+      wrap.innerHTML = '<button class="sw" type="button" role="radio" aria-checked="false"></button>' +
+        '<button class="swX" type="button" aria-label="이 색 지우기" title="지우기">' + svg(XMARK, 8, 3.6) + '</button>';
+      const sw = wrap.firstChild;
+      sw.dataset.hex = hex;
+      sw.style.background = hex;
+      sw.title = hex;
+      sw.setAttribute('aria-label', '내 색 ' + hex);
+      sw.addEventListener('click', () => setCustom(hex, true));
+      wrap.lastChild.addEventListener('click', e => {
+        e.stopPropagation(); // 지운 칸은 문서에서 빠져서, 바깥 클릭으로 잘못 보고 창을 닫지 않게
+        customs = customs.filter(h => h !== hex);
+        saveCustoms();
+        renderCustoms();
+      });
+      row.insertBefore(wrap, $('swAdd'));
+    }
+    $('swAdd').hidden = customs.length >= MAX_CUSTOM;
+    markTone();
+  }
+
+  // 고른 색은 늘 새 칸으로 더한다 (이미 있는 색이면 그 칸을 고른다)
+  function addCustom(text) {
+    const c = parseHex(text);
+    if (!c) return false;
+    if (!customs.includes(c.hex)) {
+      if (customs.length >= MAX_CUSTOM) return false;
+      customs.push(c.hex);
+      saveCustoms();
+    }
+    setCustom(c.hex, true);
+    setAddRow(false);
+    renderCustoms(c.hex);
+    return true;
+  }
+
+  function setAddRow(on) {
+    $('customRow').hidden = !on;
+    $('swAdd').setAttribute('aria-expanded', on ? 'true' : 'false');
+    $('hexIn').classList.remove('is-bad');
+    if (!on) return;
+    const start = toneNow.startsWith('#') ? toneNow : '#7ab8e6';
+    $('colorIn').value = start;
+    $('hexIn').value = '';
+    $('hexIn').placeholder = start;
+    setTimeout(() => $('hexIn').focus(), 30);
+  }
+
+  function setSurface(s, save) {
+    const v = s === 'solid' ? 'solid' : 'glass';
+    body.dataset.surface = v;
+    for (const b of document.querySelectorAll('.surfSeg .kd')) {
+      const on = b.dataset.surface === v;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-checked', on ? 'true' : 'false');
+    }
+    if (save) store.set('surface', v);
   }
 
   function setTonePop(on) {
     $('tonePop').hidden = !on;
     $('toneBtn').classList.toggle('is-on', on);
     $('toneBtn').setAttribute('aria-expanded', on ? 'true' : 'false');
-    if (on) $('customRow').hidden = !String(body.dataset.tone).startsWith('custom');
+    if (!on) {
+      setAddRow(false);
+      applySaved(); // 팔레트로 미리 보기만 하고 닫으면 원래 색으로
+    }
   }
 
   $('toneBtn').addEventListener('click', () => setTonePop($('tonePop').hidden));
-  for (const sw of document.querySelectorAll('#tonePop .sw')) {
-    sw.addEventListener('click', () => {
-      if (sw.dataset.tone !== 'custom') {
-        setTone(sw.dataset.tone, true);
-        return;
-      }
-      setCustom(store.get('custom') || $('colorIn').value, true);
-      $('customRow').hidden = false;
-      setTimeout(() => $('hexIn').focus(), 30);
-    });
+  for (const sw of document.querySelectorAll('#tonePop .sw[data-tone]')) {
+    sw.addEventListener('click', () => setTone(sw.dataset.tone, true));
   }
+  for (const b of document.querySelectorAll('.surfSeg .kd')) {
+    b.addEventListener('click', () => setSurface(b.dataset.surface, true));
+  }
+  $('swAdd').addEventListener('click', () => {
+    const on = $('customRow').hidden;
+    setAddRow(on);
+    if (!on) applySaved();
+  });
   $('colorIn').addEventListener('input', () => setCustom($('colorIn').value, false)); // 팔레트에서 움직이는 동안 미리 보기
-  $('colorIn').addEventListener('change', () => setCustom($('colorIn').value, true));
+  $('colorIn').addEventListener('change', () => addCustom($('colorIn').value));
   function applyHex() {
-    if (!setCustom($('hexIn').value, true)) $('hexIn').classList.add('is-bad');
+    if (!addCustom($('hexIn').value)) $('hexIn').classList.add('is-bad');
   }
   $('hexGo').addEventListener('click', applyHex);
   $('hexIn').addEventListener('keydown', e => {
@@ -1126,11 +1245,9 @@
     if (!$('tonePop').hidden && !e.target.closest('#tonePop') && !e.target.closest('#toneBtn')) setTonePop(false);
   });
 
-  const savedTone = store.get('tone') || 'smoke';
-  const savedCustom = store.get('custom');
-  if (savedCustom) $('swCustom').style.background = savedCustom;
-  if (savedTone === 'custom' && savedCustom) setCustom(savedCustom, false);
-  else setTone(savedTone, false);
+  setSurface(store.get('surface'), false);
+  renderCustoms();
+  applySaved();
 
   function setFold(btnId, listId, on) {
     $(listId).hidden = !on;
@@ -1216,7 +1333,8 @@
     setTab('proj', true);
     if (current) render(current);
   });
-  setTab(store.get('tab') === 'proj' ? 'proj' : 'todo', false);
+  const savedTab = store.get('tab');
+  setTab(savedTab === 'proj' || savedTab === 'sess' ? 'proj' : 'todo', false);
 
   // ── 날짜 알림 (접힌 알약 밑) ──
   // 직접 넣은 줄 중 "물어보기": 사흘 전부터 말풍선. "알림만"과 [마감] 줄: 하루 전·당일에 네모 칸
@@ -1516,6 +1634,473 @@
     mqHost = null;
   });
 
+  // ── 세션: 켜진 Claude 세션마다 픽셀 클로드 (세션 탭 카드 · 알약 위 · 점 자리) ──
+  const ST_TX = { busy: '작업 중', think: '생각 중', wait: '응답 필요', idle: '내 차례', sleep: '자는 중' };
+  const RANK = { wait: 0, busy: 1, think: 1, idle: 2, sleep: 3 };
+  const WHY_TX = { ask: '질문에 답을 기다려요', plan: '계획 확인을 기다려요', perm: '권한 확인을 기다리는 것 같아요' };
+  const TOOL_TX = [
+    [/^Read$/, '읽는 중'],
+    [/^(Grep|Glob|ToolSearch)$/, '찾는 중'],
+    [/^(Edit|Write|MultiEdit|NotebookEdit)$/, '파일 고치는 중'],
+    [/^(Bash|PowerShell)$/, '명령 실행 중'],
+    [/^(Agent|Task)$/, '에이전트 돌리는 중'],
+    [/^Workflow$/, '워크플로 돌리는 중'],
+    [/^(WebFetch|WebSearch)$/, '웹 보는 중'],
+    [/Browser|chrome/i, '브라우저 보는 중'],
+    [/notion/i, '노션 보는 중'],
+    [/^Artifact/, '페이지 올리는 중'],
+    [/visualize/, '그림 그리는 중'],
+    [/start_session|hand_off/, '새 세션 여는 중'],
+    [/^Skill$/, '스킬 읽는 중']
+  ];
+  const SWEATS = [200000, 300000, 500000];
+  const sweatAt = () => {
+    const n = Number(store.get('sweat'));
+    return SWEATS.includes(n) ? n : 300000;
+  };
+  const toolText = name => {
+    for (const [re, tx] of TOOL_TX) if (re.test(name || '')) return tx;
+    return '';
+  };
+  const man = n => (n >= 10000 ? Math.round(n / 10000) + '만' : String(n || 0));
+  function ago(ms) {
+    const m = Math.floor(Math.max(0, ms) / 60000);
+    if (m < 1) return '방금';
+    if (m < 60) return m + '분';
+    const h = Math.floor(m / 60);
+    return h + '시간' + (h < 10 && m % 60 ? ' ' + (m % 60) + '분' : '');
+  }
+  // 급한 순서: 응답 필요(오래 기다린 것부터) → 일하는 중 → 내 차례 → 자는 중
+  function sortSess(list) {
+    return [...list].sort((a, b) => (RANK[a.state] - RANK[b.state]) || (a.state === 'wait' ? a.since - b.since : b.since - a.since));
+  }
+
+  async function openSess(id, art) {
+    if (art) art.poke();
+    if (!id) return;
+    const r = await api.openSession(id);
+    if (r && !r.ok) toast(r.error || '세션을 열지 못했어요');
+  }
+
+  const SS_TEMPLATE =
+    '<span class="ssArt"></span>' +
+    '<span class="ssBody">' +
+    '<span class="ssName trim"></span>' +
+    '<span class="ssRow"><span class="ssChip"><i></i><span class="trim"></span></span><span class="ssTime trim"></span></span>' +
+    '<span class="ssMeta"><span class="ssKids"></span><span class="tx trim"></span></span>' +
+    '<span class="ssCtx"><span class="track"><span class="fill"></span></span><span class="ssCtxN trim"></span></span>' +
+    '</span>';
+  // 세션이 지금 하는 일 한 줄 (꼬마 · 기다리는 까닭 · 도구 · 모델)
+  function sessMeta(v) {
+    let meta;
+    if (v.kids > 0) meta = '꼬마 ' + v.kids + '명이 돕는 중';
+    else if (v.state === 'wait') meta = WHY_TX[v.why] || '사람을 기다려요';
+    else if (v.state === 'busy') meta = [toolText(v.tool) || '일하는 중', v.model].filter(Boolean).join(' · ');
+    else if (v.state === 'think') meta = v.model || '생각하는 중';
+    else if (v.state === 'idle') meta = ['다 했어요', v.model].filter(Boolean).join(' · ');
+    else meta = '한참 조용해요';
+    if (!v.host) meta += ' · 터미널';
+    return meta;
+  }
+  function makeSess() {
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'ss is-in';
+    el.innerHTML = SS_TEMPLATE;
+    const n = { el, art: Clawd.make({ kind: 'full', px: 2, group: 'card' }), kids: [], kidN: -1 };
+    el.querySelector('.ssArt').appendChild(n.art.el);
+    el.addEventListener('click', () => openSess(el.dataset.id, n.art));
+    setTimeout(() => el.classList.remove('is-in'), 450);
+    return n;
+  }
+  function fillSess(n, v, now, thr) {
+    const el = n.el;
+    const hot = v.ctx >= thr;
+    el.dataset.id = v.id;
+    el.dataset.st = v.state;
+    el.classList.toggle('no-open', !v.host);
+    el.title = !v.host ? '터미널 세션은 여기서 열 수 없어요' : hot ? '컨텍스트가 많이 찼어요 — 그 세션에 "새 세션"이라고 하면 이어하기 메모를 쓰고 새 방으로 넘겨요' : '누르면 이 세션 열기';
+    n.art.set(v.state, hot);
+    el.querySelector('.ssName').textContent = v.name;
+    el.querySelector('.ssChip .trim').textContent = ST_TX[v.state] || v.state;
+    el.querySelector('.ssTime').textContent = ago(now - v.since);
+    el.querySelector('.ssMeta .tx').textContent = sessMeta(v);
+    // 꼬마 클로드 = 지금 일하는 에이전트 (3마리까지 그리고 나머지는 숫자로)
+    const kn = Math.min(v.kids, 3);
+    if (kn !== n.kidN) {
+      for (const k of n.kids) k.drop();
+      n.kids = [];
+      const box = el.querySelector('.ssKids');
+      box.textContent = '';
+      for (let i = 0; i < kn; i++) {
+        const k = Clawd.make({ kind: 'head', px: 1, group: 'card', state: 'busy' });
+        n.kids.push(k);
+        box.appendChild(k.el);
+      }
+      n.kidN = kn;
+    }
+    const ratio = thr ? v.ctx / thr : 0;
+    const ctx = el.querySelector('.ssCtx');
+    ctx.classList.toggle('is-warm', ratio >= 0.7 && ratio < 1);
+    ctx.classList.toggle('is-hot', ratio >= 1);
+    ctx.querySelector('.fill').style.width = Math.min(100, Math.round(ratio * 100)) + '%';
+    ctx.querySelector('.ssCtxN').textContent = man(v.ctx);
+    ctx.title = '컨텍스트 ' + (v.ctx || 0).toLocaleString('ko-KR') + ' · 땀 기준 ' + man(thr);
+  }
+
+  // ── 프로젝트 탭 안의 세션 (1.6.0) ──
+  // 프로젝트 줄의 "· 세션 1a2b3c4d"와 켜진 세션 번호 앞 8자리가 같으면 그 카드에 붙인다:
+  // 카드 위에 서 있는 클로드(누르면 그 세션 열기, 올리면 이름표) · 카드를 펼치면 큰 세션 카드.
+  // 어느 카드에도 안 붙은 세션은 맨 아래 「그 밖의 세션」에 작은 클로드 한 줄 카드로.
+  const CARD_CREW_MAX = 4;
+  function cardOf(el) {
+    if (!el._cs) el._cs = { crew: new Map(), ss: new Map(), crewBox: null, tag: null, more: null, ssBox: null };
+    return el._cs;
+  }
+  function dropCardSess(el) {
+    const c = el._cs;
+    if (!c) return;
+    for (const n of c.crew.values()) n.art.drop();
+    for (const n of c.ss.values()) {
+      n.art.drop();
+      for (const k of n.kids) k.drop();
+    }
+    c.crew.clear();
+    c.ss.clear();
+  }
+  function fillCardSess(el, mine, now, thr) {
+    const c = cardOf(el);
+    el.classList.toggle('has-crew', mine.length > 0);
+    if (mine.length && !c.crewBox) {
+      c.crewBox = document.createElement('div');
+      c.crewBox.className = 'pjCrew';
+      c.tag = document.createElement('span');
+      c.tag.className = 'pjCrewTag';
+      c.crewBox.appendChild(c.tag);
+      el.appendChild(c.crewBox);
+    }
+    // 카드 위 클로드: 4마리까지, 넘치면 3마리 + "+N"(누르면 카드 펼치기)
+    const max = mine.length > CARD_CREW_MAX ? CARD_CREW_MAX - 1 : CARD_CREW_MAX;
+    const live = new Set();
+    mine.slice(0, max).forEach((v, i) => {
+      live.add(v.id);
+      let n = c.crew.get(v.id);
+      if (!n) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'pjCrewBtn is-in';
+        n = { el: b, art: Clawd.make({ kind: 'full', px: 2, group: 'card' }) };
+        b.appendChild(n.art.el);
+        const art = n.art;
+        b.addEventListener('click', e => {
+          e.stopPropagation();
+          openSess(b.dataset.id, art);
+        });
+        b.addEventListener('mouseenter', () => {
+          c.tag.textContent = b.dataset.tag;
+          // 이름표는 클로드 줄 왼쪽에 뜬다. 카드 왼쪽 끝을 넘지 않게 (넘치면 …)
+          c.tag.style.maxWidth = Math.max(60, Math.min(210, c.crewBox.offsetLeft - 14)) + 'px';
+          c.crewBox.classList.add('is-tag');
+        });
+        b.addEventListener('mouseleave', () => c.crewBox.classList.remove('is-tag'));
+        setTimeout(() => b.classList.remove('is-in'), 700);
+        c.crew.set(v.id, n);
+      }
+      n.el.dataset.id = v.id;
+      n.el.dataset.tag = v.name + ' · ' + (ST_TX[v.state] || v.state) + ' · ' + man(v.ctx);
+      n.el.setAttribute('aria-label', n.el.dataset.tag);
+      n.el.classList.toggle('no-open', !v.host);
+      n.art.set(v.state, v.ctx >= thr);
+      const at = c.crewBox.children[i + 1]; // 0번은 이름표
+      if (at !== n.el) c.crewBox.insertBefore(n.el, at || null);
+    });
+    for (const [k, n] of c.crew) {
+      if (live.has(k)) continue;
+      n.art.drop();
+      n.el.remove();
+      c.crew.delete(k);
+    }
+    if (mine.length > max) {
+      if (!c.more) {
+        c.more = document.createElement('button');
+        c.more.type = 'button';
+        c.more.className = 'pjCrewMore';
+        c.more.title = '세션 모두 보기';
+        c.more.addEventListener('click', e => {
+          e.stopPropagation();
+          projOpen.set(el.dataset.name, true);
+          if (current) render(current);
+        });
+      }
+      c.more.textContent = '+' + (mine.length - max);
+      c.crewBox.appendChild(c.more);
+    } else if (c.more) {
+      c.more.remove();
+    }
+    if (c.crewBox) c.crewBox.hidden = !mine.length;
+    // 펼치면 큰 세션 카드 (예전 세션 탭 카드 그대로)
+    if (mine.length && !c.ssBox) {
+      c.ssBox = document.createElement('div');
+      c.ssBox.className = 'pjSs';
+    }
+    if (!c.ssBox) return;
+    const head = el.querySelector('.pjHead');
+    if (head.nextElementSibling !== c.ssBox) head.after(c.ssBox);
+    c.ssBox.hidden = !mine.length;
+    const liveS = new Set();
+    mine.forEach((v, i) => {
+      liveS.add(v.id);
+      let n = c.ss.get(v.id);
+      if (!n) {
+        n = makeSess();
+        c.ss.set(v.id, n);
+      }
+      fillSess(n, v, now, thr);
+      const at = c.ssBox.children[i];
+      if (at !== n.el) c.ssBox.insertBefore(n.el, at || null);
+    });
+    for (const [k, n] of c.ss) {
+      if (liveS.has(k)) continue;
+      n.art.drop();
+      for (const kd of n.kids) kd.drop();
+      n.el.remove();
+      c.ss.delete(k);
+    }
+  }
+
+  // 「그 밖의 세션」: 구분선 + 작은 클로드 한 줄 카드
+  const otherCat = document.createElement('div');
+  otherCat.className = 'pjCat';
+  otherCat.innerHTML = '<span>그 밖의 세션</span><span class="n"></span>';
+  const otherBox = document.createElement('div');
+  otherBox.className = 'pjOther';
+  const slNodes = new Map();
+  function makeLine() {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sl is-in';
+    b.innerHTML = '<span class="slName"></span><span class="ssChip"><i></i><span class="trim"></span></span><span class="slCtx"></span>';
+    const n = { el: b, art: Clawd.make({ kind: 'full', px: 2, group: 'card' }) };
+    b.prepend(n.art.el);
+    b.addEventListener('click', () => openSess(b.dataset.id, n.art));
+    setTimeout(() => b.classList.remove('is-in'), 450);
+    return n;
+  }
+  function fillLine(n, v, now, thr) {
+    const el = n.el;
+    const hot = v.ctx >= thr;
+    const ratio = thr ? v.ctx / thr : 0;
+    el.dataset.id = v.id;
+    el.dataset.st = v.state;
+    el.classList.toggle('no-open', !v.host);
+    n.art.set(v.state, hot);
+    el.querySelector('.slName').textContent = v.name;
+    el.querySelector('.ssChip .trim').textContent = ST_TX[v.state] || v.state;
+    const cx = el.querySelector('.slCtx');
+    cx.textContent = man(v.ctx);
+    cx.classList.toggle('is-warm', ratio >= 0.7 && ratio < 1);
+    cx.classList.toggle('is-hot', ratio >= 1);
+    el.title = v.name + ' · ' + sessMeta(v) + ' · ' + ago(now - v.since) + '\n' +
+      (!v.host ? '터미널 세션은 여기서 열 수 없어요' : hot ? '컨텍스트가 많이 찼어요 — 그 세션에 "새 세션"이라고 하면 이어하기 메모를 쓰고 새 방으로 넘겨요' : '누르면 이 세션 열기');
+  }
+  function renderOther(rest, now, thr) {
+    const box = $('projPane');
+    const live = new Set();
+    rest.forEach((v, i) => {
+      live.add(v.id);
+      let n = slNodes.get(v.id);
+      if (!n) {
+        n = makeLine();
+        slNodes.set(v.id, n);
+      }
+      fillLine(n, v, now, thr);
+      const at = otherBox.children[i];
+      if (at !== n.el) otherBox.insertBefore(n.el, at || null);
+    });
+    for (const [k, n] of slNodes) {
+      if (live.has(k)) continue;
+      n.art.drop();
+      n.el.remove();
+      slNodes.delete(k);
+    }
+    if (!rest.length) {
+      otherCat.remove();
+      otherBox.remove();
+      return;
+    }
+    otherCat.querySelector('.n').textContent = String(rest.length);
+    // 프로젝트 카드들 뒤, "지운 프로젝트" 접기 칸 앞 (이미 그 자리면 옮기지 않는다)
+    const anchor = hidFold.isConnected ? hidFold : null;
+    if (otherBox.nextSibling !== anchor || otherBox.parentNode !== box) box.insertBefore(otherBox, anchor);
+    if (otherCat.nextSibling !== otherBox) box.insertBefore(otherCat, otherBox);
+  }
+  // 프로젝트 카드마다 붙일 세션을 고르고, 남은 세션은 「그 밖의 세션」으로
+  function placeSessions() {
+    const now = Date.now();
+    const thr = sweatAt();
+    const list = sortSess(sessList);
+    const used = new Set();
+    for (const el of pjNodes.values()) {
+      const ids = (el.dataset.sess || '').split(' ').filter(Boolean);
+      const mine = ids.length ? list.filter(v => ids.includes(String(v.id).slice(0, 8).toLowerCase())) : [];
+      for (const v of mine) used.add(v.id);
+      fillCardSess(el, mine, now, thr);
+    }
+    renderOther(list.filter(v => !used.has(v.id)), now, thr);
+  }
+
+  const crewNodes = new Map();
+  function renderCrew(list, thr) {
+    const box = $('crew');
+    const max = list.length > 4 ? 3 : 4;
+    const live = new Set();
+    list.slice(0, max).forEach((v, i) => {
+      live.add(v.id);
+      let n = crewNodes.get(v.id);
+      if (!n) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'crewBtn is-in';
+        n = { el: b, art: Clawd.make({ kind: 'full', px: 2, group: 'crew' }) };
+        b.appendChild(n.art.el);
+        const art = n.art;
+        b.addEventListener('click', e => {
+          e.stopPropagation();
+          openSess(b.dataset.id, art);
+        });
+        setTimeout(() => b.classList.remove('is-in'), 700);
+        crewNodes.set(v.id, n);
+      }
+      const hot = v.ctx >= thr;
+      n.el.dataset.id = v.id;
+      n.el.title = !v.id ? v.name : v.name + ' · ' + (ST_TX[v.state] || '') + (hot ? ' · 컨텍스트 ' + man(v.ctx) : '');
+      n.el.setAttribute('aria-label', n.el.title);
+      n.art.set(v.state, hot);
+      const at = box.children[i];
+      if (at !== n.el) box.insertBefore(n.el, at || null);
+    });
+    for (const [k, n] of crewNodes) {
+      if (live.has(k)) continue;
+      n.art.drop();
+      n.el.remove();
+      crewNodes.delete(k);
+    }
+    let more = $('crewMore');
+    if (list.length > max) {
+      if (!more) {
+        more = document.createElement('button');
+        more.type = 'button';
+        more.id = 'crewMore';
+        more.className = 'crewMore';
+        more.title = '세션 모두 보기';
+        more.addEventListener('click', e => {
+          e.stopPropagation();
+          setTab('proj', true);
+          setPinned(true);
+        });
+      }
+      more.textContent = '+' + (list.length - max);
+      box.appendChild(more);
+    } else if (more) {
+      more.remove();
+    }
+  }
+
+  let headArt = null;
+  function renderPillHead(list, thr) {
+    const on = crewMode === 'dot' && list.length > 0;
+    $('pillHead').hidden = !on;
+    if (!on) return;
+    if (!headArt) {
+      headArt = Clawd.make({ kind: 'head', px: 2, group: 'dot' });
+      $('pillHead').prepend(headArt.el);
+    }
+    headArt.set(list[0].state, list[0].ctx >= thr);
+    const waits = list.filter(x => x.state === 'wait').length;
+    $('pillHeadBadge').hidden = !waits;
+    $('pillHeadBadge').textContent = String(waits);
+  }
+
+  // 프로젝트 탭 이름 옆 작은 클로드 머리 = 가장 급한 세션 (세션이 있을 때만)
+  const tabArt = Clawd.make({ kind: 'head', px: 1, group: 'tab' });
+  $('tabProjIc').appendChild(tabArt.el);
+  const optArt = Clawd.make({ kind: 'head', px: 1, group: 'tab' });
+  $('crewIc').appendChild(optArt.el);
+
+  function renderSessions() {
+    const now = Date.now();
+    const thr = sweatAt();
+    const list = sortSess(sessList);
+    $('tabProjIc').hidden = !list.length;
+    tabArt.set(list.length ? list[0].state : 'sleep', !!list.length && list[0].ctx >= thr);
+    placeSessions();
+    // 켜진 세션이 없어도 알약에는 자는 클로드 한 마리 (위젯이 살아 있다는 표시)
+    const shown = list.length ? list : [{ id: '', name: '켜진 세션이 없어요', state: 'sleep', ctx: 0, since: now, host: '' }];
+    body.classList.add('has-sess');
+    renderCrew(shown, thr);
+    renderPillHead(shown, thr);
+    updateTabs();
+  }
+
+  // 알약 클로드 자리 고르기 (색 창 아래)
+  function markOpts() {
+    for (const b of document.querySelectorAll('[data-crew]')) {
+      const on = b.dataset.crew === crewMode;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-checked', on ? 'true' : 'false');
+    }
+    const thr = sweatAt();
+    for (const b of document.querySelectorAll('[data-sweat]')) {
+      const on = Number(b.dataset.sweat) === thr;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-checked', on ? 'true' : 'false');
+    }
+  }
+  function applyCrew(mode) {
+    crewMode = mode === 'dot' || mode === 'off' ? mode : 'top';
+    body.classList.toggle('crew-top', crewMode === 'top');
+    body.classList.toggle('crew-dot', crewMode === 'dot');
+    markOpts();
+    clawdGroups();
+    renderSessions();
+  }
+  async function setCrew(mode) {
+    if (mode === crewMode) return;
+    // 위에 서 있기를 켜고 끌 때만 창 자리가 16px 바뀐다 → 그때만 잠깐 가린다
+    const move = (mode === 'top') !== (crewMode === 'top');
+    if (move) {
+      body.classList.add('is-reanchor');
+      await frames(2);
+    }
+    applyCrew(mode);
+    try {
+      const r = await api.setCrew(crewMode);
+      if (r) applyAnchor(r, true);
+    } catch (e) {}
+    if (move) {
+      await frames(3);
+      body.classList.remove('is-reanchor');
+    }
+  }
+  for (const b of document.querySelectorAll('[data-crew]')) b.addEventListener('click', () => setCrew(b.dataset.crew));
+  for (const b of document.querySelectorAll('[data-sweat]')) {
+    b.addEventListener('click', () => {
+      store.set('sweat', b.dataset.sweat);
+      markOpts();
+      renderSessions();
+    });
+  }
+  applyCrew(crewMode);
+  api.onSessions(list => {
+    sessList = Array.isArray(list) ? list : [];
+    renderSessions();
+  });
+  api.getSessions().then(list => {
+    sessList = Array.isArray(list) ? list : [];
+    renderSessions();
+  });
+  setInterval(() => { if (sessList.length) renderSessions(); }, 30000); // "3분" 같은 시간 글자 갱신
+
   // ── 시작 ──
   async function load() {
     render(await api.get());
@@ -1550,6 +2135,7 @@
   });
   api.winState().then(st => {
     if (st.panelH) setPanelH(st.panelH);
+    if (st.crew) applyCrew(st.crew);
     if (st.anchor) applyAnchor({ anchor: st.anchor });
     setTopUi(st.pinned);
     setStayUi(st.stay);
@@ -1564,6 +2150,17 @@
     close: () => setOpen(false),
     tab: t => setTab(t, false),
     ignoreRealPointer: on => { ignoreRealPointer = !!on; },
+    setCustoms: list => { customs = list.slice(); saveCustoms(); renderCustoms(); },
+    custom: hex => addCustom(hex),
+    surface: v => setSurface(v, true),
+    crew: m => setCrew(m),
+    tone: v => setTone(v, false),
+    sessions: () => sortSess(sessList).map(v => ({ id: v.id, state: v.state, ctx: v.ctx, kids: v.kids })),
+    // 카드마다 붙은 세션(앞 8자리) · 「그 밖의 세션」
+    cards: () => ({
+      cards: [...pjNodes.values()].filter(el => el.isConnected).map(el => [el.dataset.name, [...cardOf(el).crew.keys()].map(id => id.slice(0, 8)), cardOf(el).ss.size, el.classList.contains('is-open')]),
+      other: [...slNodes.keys()].map(id => id.slice(0, 8))
+    }),
     state: () => ({ open, pinned, onTop, stay, ignoring, menuKey, suppressHover, tab, anchor: anchorKey, panelH, moving, notice: noticeNow ? noticeNow.id : '' })
   };
   load();

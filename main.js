@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const status = require('./status');
+const sessions = require('./sessions');
 
 // 현황판 파일: 트레이에서 고른 파일 → (Claude Code를 쓰면) ~/.claude/STATUS.md → 문서\현황판\STATUS.md
 // 시험할 때만 STATUS_WIDGET_FILE로 다른 파일을 쓴다
@@ -61,8 +62,20 @@ let panelH = PANEL_DEFAULT;
 const PILL_W = 248;
 const PILL_H = 48;
 let anchor = { h: 'right', v: 'down' };
+// 알약 클로드: top = 알약 위에 서 있기(그만큼 창 위쪽에 자리를 더 둔다) / dot = 알약 점 자리에 한 마리 / off = 안 보이기
+let crew = 'top';
+const CREW_PAD = 16; // 클로드 키 30px - 원래 위쪽 여백 14px
+const topPad = () => (crew === 'top' ? CREW_PAD : 0);
 const pillLeftIn = a => (a.h === 'left' ? 20 : WIN_W - 20 - PILL_W);
-const pillTopIn = (a, height) => (a.v === 'up' ? height - 14 - PILL_H : 14);
+const pillTopIn = (a, height) => (a.v === 'up' ? height - 14 - PILL_H : 14 + topPad());
+const panelMargin = a => PANEL_MARGIN + (a.v === 'up' ? 0 : topPad());
+// 아래로 펼칠 때 알약 위에 선 클로드가 화면 위로 잘리지 않게 알약을 조금 내린다
+function fitPill(p, a) {
+  if (a.v === 'up' || crew !== 'top') return p;
+  const wa = workAreaAt(p.x, p.y);
+  p.y = Math.max(p.y, wa.y + 14 + CREW_PAD);
+  return p;
+}
 function pillRect(b, a) {
   return { x: b.x + pillLeftIn(a), y: b.y + pillTopIn(a, b.height), width: PILL_W, height: PILL_H };
 }
@@ -80,14 +93,14 @@ function boundsFor(px, py, a) {
     const top = Math.min(wa.y, bottom - (PANEL_MIN + PANEL_MARGIN));
     return { x, y: top, width: WIN_W, height: bottom - top };
   }
-  const top = Math.round(py - 14);
-  const bottom = Math.max(wa.y + wa.height, top + PANEL_MIN + PANEL_MARGIN);
+  const top = Math.round(py - 14 - topPad());
+  const bottom = Math.max(wa.y + wa.height, top + PANEL_MIN + panelMargin(a));
   return { x, y: top, width: WIN_W, height: bottom - top };
 }
-const fitPanel = height => { panelH = clampPanel(Math.min(panelH, height - PANEL_MARGIN)); };
+const fitPanel = height => { panelH = clampPanel(Math.min(panelH, height - panelMargin(anchor))); };
 function defaultPill() {
   const wa = screen.getPrimaryDisplay().workArea;
-  return { x: wa.x + wa.width - 6 - 20 - PILL_W, y: wa.y + 6 + 14 };
+  return fitPill({ x: wa.x + wa.width - 6 - 20 - PILL_W, y: wa.y + 6 + 14 }, { h: 'right', v: 'down' });
 }
 function pillOnScreen(p) {
   return screen.getAllDisplays().some(d => {
@@ -262,11 +275,65 @@ ipcMain.handle('claude:open', async (_e, prompt) => {
     return { ok: false, error: String(e && e.message || e) };
   }
 });
-ipcMain.handle('win:state', () => ({ pinned, stay, panelH, anchor, test: TEST, startOpen: !!process.env.STATUS_WIDGET_OPEN }));
+ipcMain.handle('win:state', () => ({ pinned, stay, panelH, anchor, crew, test: TEST, startOpen: !!process.env.STATUS_WIDGET_OPEN }));
 // 판 가장자리를 끌어 길이 조절: 창은 이미 화면 끝까지라 창 크기는 건드리지 않고 판 길이만 바꾼다
 ipcMain.handle('win:resize-begin', () => {
   if (!win || win.isDestroyed()) return null;
-  return { min: PANEL_MIN, max: win.getBounds().height - PANEL_MARGIN };
+  return { min: PANEL_MIN, max: win.getBounds().height - panelMargin(anchor) };
+});
+// 알약 클로드 모양 바꾸기: 알약은 그 자리에 두고 창만 다시 맞춘다 (위에 서 있기는 창 위쪽 자리가 더 필요)
+ipcMain.handle('win:crew', (_e, mode) => {
+  const m = mode === 'dot' || mode === 'off' ? mode : 'top';
+  if (!win || win.isDestroyed()) {
+    crew = m;
+    return null;
+  }
+  const p = pillRect(win.getBounds(), anchor);
+  crew = m;
+  fitPill(p, anchor);
+  const b = boundsFor(p.x, p.y, anchor);
+  fitPanel(b.height);
+  win.setBounds(b);
+  sendBounds();
+  sendWall();
+  saveWinState();
+  logEvent('crew ' + crew);
+  return { anchor, panelH, crew };
+});
+
+// ── 켜진 Claude 세션 (2초마다 + 세션 폴더가 바뀌면 바로). 바뀐 게 있을 때만 화면에 보낸다 ──
+let sessJson = '[]';
+let sessTimer = null;
+function pollSessions() {
+  let list = [];
+  try {
+    list = sessions.scan();
+  } catch (e) {
+    list = [];
+  }
+  const j = JSON.stringify(list);
+  if (j === sessJson) return;
+  sessJson = j;
+  send('sessions:update', list);
+}
+ipcMain.handle('sessions:get', () => {
+  pollSessions();
+  return JSON.parse(sessJson);
+});
+// 카드를 누르면 Claude 앱에서 그 세션을 연다 (앱 세션만. 터미널 세션은 앱 번호가 없다)
+ipcMain.handle('sessions:open', async (_e, id) => {
+  const s = JSON.parse(sessJson).find(x => x.id === id);
+  if (!s || !s.host) return { ok: false, error: '이 세션은 Claude 앱 세션이 아니라서 열 수 없어요' };
+  // Claude 앱이 세션마다 주는 "밖에서 열기" 링크 (앱 세션 목록의 link와 같은 모양)
+  const url = 'claude://claude.ai/epitaxy/' + encodeURIComponent(s.host);
+  logEvent('open session');
+  if (TEST && process.env.STATUS_WIDGET_NO_LINK) return { ok: true, url };
+  try {
+    await shell.openExternal(url);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e && e.message || e) };
+  }
 });
 ipcMain.handle('win:resize-end', (_e, h) => {
   if (!win || win.isDestroyed()) return panelH;
@@ -333,8 +400,9 @@ function planSettle() {
   if (v === 'down' && down < panelH && up > down) v = 'up';
   if (v === 'up' && up < panelH && down > up) v = 'down';
   const a = { h, v };
+  fitPill(p, a);
   const bounds = boundsFor(p.x, p.y, a);
-  const ph = clampPanel(Math.min(panelH, bounds.height - PANEL_MARGIN));
+  const ph = clampPanel(Math.min(panelH, bounds.height - panelMargin(a)));
   const changed = h !== anchor.h || v !== anchor.v;
   // 위로 펼칠 때는 판이 창 아래쪽 기준이라, 창 높이가 바뀌는 순간 한 박자 튈 수 있다 → 그때만 잠깐 가린다
   const hide = changed || (v === 'up' && bounds.height !== b.height);
@@ -472,7 +540,7 @@ function saveWinState() {
     try {
       fs.mkdirSync(app.getPath('userData'), { recursive: true });
       const keep = loadWinState().file;
-      fs.writeFileSync(stateFile(), JSON.stringify(Object.assign({ pill: { x: p.x, y: p.y }, pinned, stay, panelH, anchor }, keep ? { file: keep } : {})));
+      fs.writeFileSync(stateFile(), JSON.stringify(Object.assign({ pill: { x: p.x, y: p.y }, pinned, stay, panelH, anchor, crew }, keep ? { file: keep } : {})));
     } catch (e) {}
   }, 400);
 }
@@ -513,6 +581,8 @@ function createWindow() {
   stay = !!st.stay;
   if (st.panelH) panelH = clampPanel(st.panelH);
   if (st.anchor && /^(left|right)$/.test(st.anchor.h) && /^(up|down)$/.test(st.anchor.v)) anchor = { h: st.anchor.h, v: st.anchor.v };
+  if (/^(top|dot|off)$/.test(st.crew)) crew = st.crew;
+  if (TEST && /^(top|dot|off)$/.test(process.env.STATUS_WIDGET_CREW || '')) crew = process.env.STATUS_WIDGET_CREW;
   // 기억해 둔 알약 자리(옛 버전은 창 자리에서 계산)에서 창 자리를 정한다. 화면 밖이면 처음 자리로
   let pill = null;
   if (st.pill && Number.isFinite(st.pill.x) && Number.isFinite(st.pill.y)) pill = { x: st.pill.x, y: st.pill.y };
@@ -521,6 +591,7 @@ function createWindow() {
     anchor = { h: 'right', v: 'down' };
     pill = defaultPill();
   }
+  fitPill(pill, anchor);
   const bounds = boundsFor(pill.x, pill.y, anchor);
   fitPanel(bounds.height); // 늘려 둔 판이 지금 화면보다 길면 화면 안에 들어오게 줄인다
   win = new BrowserWindow({
@@ -537,7 +608,9 @@ function createWindow() {
     minimizable: false,
     fullscreenable: false,
     skipTaskbar: true,
-    alwaysOnTop: pinned || TEST,
+    // "맨 위"를 끈 채로 만든 투명 창은 빈 곳이 하얗게 칠해진다(그래픽 가속을 끈 이 PC에서 재현, 11/12).
+    // 그래서 늘 맨 위로 만들어 한 번 그린 뒤, 사용자 설정(핀)대로 되돌린다 → showOnce
+    alwaysOnTop: true,
     show: false,
     title: '현황판',
     icon: path.join(__dirname, 'icon.png'),
@@ -550,11 +623,14 @@ function createWindow() {
     }
   });
   win.setIgnoreMouseEvents(true, { forward: true });
-  win.loadFile(path.join(__dirname, 'index.html'));
+  win.loadFile(path.join(__dirname, 'index.html'), { query: { crew } });
   const shown = win;
   const showOnce = () => {
     if (shown.isDestroyed() || shown.isVisible()) return;
     shown.showInactive();
+    setTimeout(() => {
+      if (!shown.isDestroyed() && shown === win) applyTop();
+    }, 800);
   };
   shown.once('ready-to-show', showOnce);
   setTimeout(showOnce, 1500); // 다시 그릴 때 ready-to-show가 안 오는 경우가 있어서
@@ -649,6 +725,13 @@ function runTestShot() {
     }
     const shot = await win.webContents.capturePage();
     fs.writeFileSync(out, shot.toPNG());
+    // 움직임 확인용: 0.125초 간격으로 여러 장 (STATUS_WIDGET_FRAMES)
+    const frames = Math.min(Number(process.env.STATUS_WIDGET_FRAMES) || 0, 64);
+    for (let i = 0; i < frames; i++) {
+      const f = await win.webContents.capturePage();
+      fs.writeFileSync(out.replace(/\.png$/i, '') + '-f' + String(i).padStart(2, '0') + '.png', f.toPNG());
+      await new Promise(r => setTimeout(r, 125));
+    }
     fs.writeFileSync(out + '.bounds.json', JSON.stringify(Object.assign({ scale: screen.getPrimaryDisplay().scaleFactor }, win.getBounds())));
     if (!process.env.STATUS_WIDGET_KEEP) {
       quitting = true;
@@ -671,6 +754,13 @@ if (!app.requestSingleInstanceLock()) {
     setInterval(checkExternal, 4000); // 감시가 놓친 변경 대비
     loadWallpaper();
     setInterval(loadWallpaper, 30000); // 바탕화면이 바뀌면 따라간다
+    setInterval(pollSessions, 2000);
+    try {
+      fs.watch(sessions.SESS_DIR, () => {
+        clearTimeout(sessTimer);
+        sessTimer = setTimeout(pollSessions, 150);
+      });
+    } catch (e) {}
     logEvent('app ready' + (TEST ? ' (test)' : ''));
     // 절전·잠금·화면 구성 변경 뒤에는 투명 창이 깨질 수 있어서 새로 그린다
     for (const ev of ['suspend', 'resume', 'lock-screen', 'unlock-screen']) {

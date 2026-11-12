@@ -5,6 +5,7 @@
 // 완료 칸의 줄은 "- [x] ... (완료 10/17) ← 파일"처럼 끝난 날짜를 붙인다.
 // 프로젝트 줄 밑에 들여쓴 "- [x] / - [>] / - [ ]"는 단계다. [>]가 지금 하는 단계.
 // 위젯에서 추가한 줄은 "— 10/18 추가"가 붙고, 날짜를 고르면 "· 날짜 10/31 · 물어보기(또는 알림만)"도 붙는다.
+// 프로젝트 줄의 "· 세션 1a2b3c4d"(Claude 세션 번호 앞 8자리, 여러 개 가능)는 그 일을 하는 세션 표시다. 제목·설명에서는 뺀다.
 
 const ITEM_RE = /^- \[( |x|X)\] (.*)$/;
 const STEP_RE = /^(\s+)- \[( |x|X|>)\] (.*)$/;
@@ -16,6 +17,7 @@ const ADDED_RE = /(\d{1,2})\/(\d{1,2}) 추가/;
 const WHEN_RE = /날짜 (\d{1,2})\/(\d{1,2})/;
 const ASKED_RE = /\d{1,2}\/\d{1,2} 물어봄/;
 const META_RE = /\d{1,2}\/\d{1,2} (추가|물어봄)/g;
+const SESS_RE = /\s*·\s*세션\s+([0-9a-f]{8})(?![0-9a-z])/gi;
 const TAGS = { '마감': 'due', '진행': 'doing', '대기': 'wait', '설치': 'install', '확인': 'check' };
 const TAG_OF = { due: '마감', doing: '진행', wait: '대기', install: '설치', check: '확인' };
 const TITLES = { proj: '프로젝트', todo: '할 일', hold: '보류', done: '완료' };
@@ -134,6 +136,12 @@ function describe(key, it, area) {
     tag = t[1].trim();
     main = main.slice(t[0].length);
   }
+  const sess = [];
+  main = main.replace(SESS_RE, (_, id) => {
+    const k = id.toLowerCase();
+    if (!sess.includes(k)) sess.push(k);
+    return '';
+  }).trim();
   let title = main;
   let sub = '';
   const dash = main.indexOf(' — ');
@@ -161,7 +169,7 @@ function describe(key, it, area) {
   } else if (cat === 'due') {
     due = dateOf(DATE_RE);
   }
-  return { key, tag, cat, title, sub, ref, doneAt, full: it.body, done: it.done, area, due, user, kind, asked, note };
+  return { key, tag, cat, title, sub, ref, doneAt, full: it.body, done: it.done, area, due, user, kind, asked, note, sess };
 }
 
 // 프로젝트 줄 밑의 단계들: [x] 끝남 · [>] 지금 · [ ] 남음
